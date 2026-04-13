@@ -1,0 +1,8 @@
+{
+  "name": "@future-craft/state-machine",
+  "version": "0.1.0",
+  "main": "src/index.ts",
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": { "@future-craft/schemas": "workspace:*" },
+  "devDependencies": { "typescript": "^5.4.5" }
+}

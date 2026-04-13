@@ -1,0 +1,7 @@
+{
+  "name": "@future-craft/safety-model",
+  "version": "0.1.0",
+  "main": "src/index.ts",
+  "dependencies": { "@future-craft/schemas": "workspace:*" },
+  "devDependencies": { "typescript": "^5.4.5" }
+}
