@@ -10,7 +10,7 @@
     "@future-craft/schemas": "workspace:*",
     "@future-craft/message-bus": "workspace:*",
     "@future-craft/config": "workspace:*",
-    "better-sqlite3": "^9.6.0",
+    "better-sqlite3": "^12.9.0",
     "pino": "^9.1.0"
   },
   "devDependencies": {
