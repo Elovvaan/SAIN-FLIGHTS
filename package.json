@@ -1,0 +1,21 @@
+{
+  "name": "sain-flights",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:sim": "bash scripts/dev-sim.sh",
+    "dev:sim:local": "bash scripts/dev-sim-local.sh",
+    "verify:sim": "bash scripts/verify-sim.sh",
+    "dev:core": "concurrently -n state,safety,command,flight,propulsion,field,telemetry,perception -c blue,yellow,cyan,green,magenta,red,white,gray \"tsx apps/state-engine/src/index.ts\" \"tsx apps/safety-supervisor/src/index.ts\" \"tsx apps/command-service/src/index.ts\" \"tsx apps/flight-orchestrator/src/index.ts\" \"tsx apps/propulsion-controller/src/index.ts\" \"tsx apps/field-controller/src/index.ts\" \"tsx apps/telemetry-logger/src/index.ts\" \"tsx apps/perception-engine/src/index.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "tsx": "^4.11.0",
+    "concurrently": "^8.2.2",
+    "@types/node": "^22.0.0"
+  },
+  "dependencies": {
+    "nats": "^2.28.2"
+  }
+}

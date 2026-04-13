@@ -1,0 +1,6 @@
+{
+  "name": "@sain/telemetry-logger",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": { "dev": "tsx src/index.ts" }
+}
