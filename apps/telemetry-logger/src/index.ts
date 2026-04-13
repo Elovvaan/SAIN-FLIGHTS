@@ -1,10 +1,18 @@
 import { connect } from 'nats';
-import Database from 'better-sqlite3';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 import {
   TOPICS, NATS_URL, decode, now
 } from '../../../packages/shared/src/index.js';
+
+// Use Node.js built-in SQLite (available in Node.js v22.5+)
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { DatabaseSync } = require('node:sqlite') as {
+  DatabaseSync: new (path: string) => {
+    exec(sql: string): void;
+    prepare(sql: string): { run(...params: unknown[]): { lastInsertRowid: number | bigint } };
+  };
+};
 
 const SERVICE = 'telemetry-logger';
 
@@ -12,7 +20,7 @@ const dataDir = join(process.cwd(), 'data');
 mkdirSync(dataDir, { recursive: true });
 
 const dbPath = join(dataDir, 'telemetry.db');
-const db = new Database(dbPath);
+const db = new DatabaseSync(dbPath);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS telemetry (
