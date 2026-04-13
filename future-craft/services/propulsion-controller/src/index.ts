@@ -16,7 +16,7 @@ function publishHealth(healthy: boolean): void {
     liftCell2Ok: healthy,
     liftCell3Ok: healthy,
     liftCell4Ok: healthy,
-    thrustCorridor0k: healthy,
+    thrustCorridorOk: healthy,
     overallHealthy: healthy,
     timestamp: new Date().toISOString(),
   };

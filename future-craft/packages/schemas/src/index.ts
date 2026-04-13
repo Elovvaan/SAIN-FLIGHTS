@@ -120,7 +120,7 @@ export const PropulsionHealthSchema = z.object({
   liftCell2Ok: z.boolean(),
   liftCell3Ok: z.boolean(),
   liftCell4Ok: z.boolean(),
-  thrustCorridor0k: z.boolean(),
+  thrustCorridorOk: z.boolean(),
   overallHealthy: z.boolean(),
   timestamp: z.string(),
 });
