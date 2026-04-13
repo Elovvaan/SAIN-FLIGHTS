@@ -1,18 +1,10 @@
 import { connect } from 'nats';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
+import { DatabaseSync } from 'node:sqlite';
 import {
   TOPICS, NATS_URL, decode, now
 } from '../../../packages/shared/src/index.js';
-
-// Use Node.js built-in SQLite (available in Node.js v22.5+)
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { DatabaseSync } = require('node:sqlite') as {
-  DatabaseSync: new (path: string) => {
-    exec(sql: string): void;
-    prepare(sql: string): { run(...params: unknown[]): { lastInsertRowid: number | bigint } };
-  };
-};
 
 const SERVICE = 'telemetry-logger';
 
@@ -71,8 +63,10 @@ async function main() {
         try {
           const data = decode<unknown>(msg.data);
           record(topic, data);
-        } catch {
-          record(topic, { raw: new TextDecoder().decode(msg.data) });
+        } catch (err) {
+          const raw = new TextDecoder().decode(msg.data);
+          console.warn(`[${SERVICE}] Failed to decode message on ${topic}: ${err}. Recording raw.`);
+          record(topic, { raw });
         }
       }
     })();

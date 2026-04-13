@@ -25,6 +25,7 @@ const REQUIRED_SERVICES = [
   'propulsion-controller',
   'field-controller',
   'telemetry-logger',
+  'perception-engine',
 ];
 
 async function waitMs(ms: number): Promise<void> {
