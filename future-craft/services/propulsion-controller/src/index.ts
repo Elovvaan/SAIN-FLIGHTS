@@ -295,12 +295,13 @@ function startFieldLoop(): void {
             groundAltM,
           );
           if (liftResult.liftDetected) {
-            const ok = fsm.requestTransition('LIFT_DETECTED', `lift_detected via ${liftResult.method}`);
-            if (ok) {
+            const liftDetected = fsm.requestTransition('LIFT_DETECTED', `lift_detected via ${liftResult.method}`);
+            if (liftDetected) {
               logger.info(
                 { type: 'flight_event', event: 'lift_detected', method: liftResult.method, flightPhase: fsm.phase },
                 'lift_detected',
               );
+              fsm.requestTransition('STABILIZING', `stabilizing after lift detection via ${liftResult.method}`);
             }
           }
         }
