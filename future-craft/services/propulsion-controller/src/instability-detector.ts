@@ -5,14 +5,14 @@
  * an unstable condition that requires immediate abort.
  *
  * Detection criteria (any one is sufficient to trigger):
- *   1. Absolute roll or pitch exceeds MAX_ANGLE_RAD    — extreme tilt
- *   2. Angular rate magnitude exceeds MAX_RATE_RAD_S   — rapid rotation
- *   3. Roll or pitch is outside the stable band AND
- *      has been outside for ≥ DIVERGENCE_TICKS         — sustained divergence
+ *   1. Absolute roll or pitch exceeds maxAngleRad      — extreme tilt
+ *   2. Angular rate magnitude exceeds maxRateRadS      — rapid rotation
+ *   3. Any required numeric input is non-finite        — malformed IMU/timing data
  *
  * Safety contract:
  *   - If imuState.valid is false the result is { triggered: false } (no abort
- *     on bad sensor data — the calling layer should handle invalid IMU separately).
+ *     on invalid IMU state — the calling layer should handle that separately).
+ *   - Non-finite numeric values are treated as unsafe input and may trigger.
  *   - All thresholds are configurable through InstabilityConfig.
  *   - The function is pure and side-effect-free.
  */
@@ -61,6 +61,11 @@ export const DEFAULT_INSTABILITY_CONFIG: InstabilityConfig = {
 
 /**
  * Detect instability from the current IMU snapshot.
+ *
+ * Triggers when roll/pitch exceeds `config.maxAngleRad`, when the estimated
+ * angular rate exceeds `config.maxRateRadS`, or when required numeric inputs
+ * are non-finite. If `imuState.valid` is false, this function returns
+ * `{ triggered: false }`.
  *
  * @param imuState    Current IMU reading.
  * @param prevImuState Previous IMU reading (used for angular-rate estimation).
