@@ -85,9 +85,6 @@ const routerConfig: ActuatorRouterConfig = {
 
 /** Translator gain / enable config derived from environment variables. */
 const translatorConfig: TranslatorConfig = {
-  // In safe-lift / tether mode, translation is locked (velocityX=0, velocityY=0
-  // will be enforced in the field loop). We still respect the flag here so that
-  // normal mode continues to work as before.
   enabled: config.FIELD_TRANSLATION_ENABLED,
   translationGain: config.FIELD_TRANSLATION_GAIN,
   biasGain: config.FIELD_BIAS_GAIN,
@@ -193,9 +190,12 @@ function startFieldLoop(): void {
       }
 
       // ── Safe-lift / tether mode: enforce safe-band constraints ──────────────
+      // In safe-lift / tether mode, translation is locked (velocityX=0,
+      // velocityY=0) and intensity is limited to rampConfig.targetIntensity.
+      // FIELD_TRANSLATION_ENABLED is still respected in normal mode.
       const safeLiftActive = config.SAFE_LIFT_MODE || config.TETHER_MODE;
       if (safeLiftActive && fieldState.enabled) {
-        // Lock translation in safe-lift mode.
+        // Lock translation.
         fieldState = { ...fieldState, velocityX: 0, velocityY: 0 };
 
         // Apply ramp-based intensity when RAMPING.

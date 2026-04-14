@@ -123,13 +123,8 @@ export function detectInstability(
   }
 
   // ── Criterion 3: outside stable band ──────────────────────────────────────
-  const outsideStableBand =
-    absRoll  > config.stableBandRad ||
-    absPitch > config.stableBandRad;
-
-  // ── Compute a scalar stability score (0 = max stable, 1 = at limit) ────────
-  // (Exposed for telemetry; not used for abort decisions here.)
-  const _ = outsideStableBand; // referenced by telemetry-stream externally
+  // Angles beyond the stable band are logged via telemetry (stabilityScore > 0)
+  // but do not independently abort — angle and rate checks above are sufficient.
 
   return { triggered: false };
 }
