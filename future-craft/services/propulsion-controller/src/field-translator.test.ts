@@ -189,7 +189,7 @@ describe('field-translator', () => {
       const cfg = makeConfig({ biasGain: 1000 });
       let state = makeFieldState({ bias: 0.9, velocityX: 1, velocityY: 1 });
       for (let i = 0; i < 100; i++) {
-        state = translateField(state, 0.1, cfg) as FieldState;
+        state = translateField(state, 0.1, cfg);
       }
       assert.ok(state.bias >= -1 && state.bias <= 1, `bias ${state.bias} is outside [-1, 1]`);
     });
