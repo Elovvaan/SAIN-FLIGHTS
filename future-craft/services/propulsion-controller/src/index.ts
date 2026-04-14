@@ -21,6 +21,18 @@ const flightCtrl = createFlightControllerLink(
 /** Control loop interval for field-mode phase advancement (20 Hz). */
 const FIELD_LOOP_INTERVAL_MS = 50;
 
+/**
+ * Bias values for each motion-plan type in field mode.
+ *
+ * The bias shifts the adjusted base by `bias × BIAS_SCALE` (where BIAS_SCALE
+ * is 0.2 in field-solver.ts), so a bias of ±0.2 shifts the collective by ±4 %
+ * of full output range.  Positive = expansion (more lift), negative =
+ * contraction (less lift).
+ */
+const FIELD_BIAS_ASCEND = 0.2;
+const FIELD_BIAS_FOLLOW = 0.1;
+const FIELD_BIAS_DESCEND = -0.2;
+
 let fieldState: FieldState = {
   intensity: 0,
   phase: 0,
@@ -94,7 +106,7 @@ async function applyMotionPlan(plan: MotionPlan): Promise<void> {
     switch (plan.type) {
       case 'ASCEND':
         intensity = 70;
-        bias = 0.2;  // slight expansion bias for climb
+        bias = FIELD_BIAS_ASCEND;
         break;
       case 'HOVER':
       case 'HOLD':
@@ -103,11 +115,11 @@ async function applyMotionPlan(plan: MotionPlan): Promise<void> {
         break;
       case 'FOLLOW':
         intensity = 55;
-        bias = 0.1;
+        bias = FIELD_BIAS_FOLLOW;
         break;
       case 'DESCEND':
         intensity = 30;
-        bias = -0.2; // contraction bias for descent
+        bias = FIELD_BIAS_DESCEND;
         break;
     }
 
