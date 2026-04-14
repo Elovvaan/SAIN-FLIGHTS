@@ -131,9 +131,11 @@ const ConfigSchema = z.object({
   INSTABILITY_STABLE_BAND_RAD: z.coerce.number().default(0.087),
   // ── Live telemetry stream ─────────────────────────────────────────────────
   // When true, a structured telemetry frame is emitted on every field-loop tick.
+  // Disabled by default so normal runs do not generate high-volume telemetry logs
+  // unless explicitly enabled.
   TELEMETRY_ENABLED: z
     .string()
-    .default('true')
+    .default('false')
     .transform((v) => v === 'true' || v === '1'),
 });
 
