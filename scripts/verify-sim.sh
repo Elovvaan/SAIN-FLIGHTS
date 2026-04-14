@@ -99,10 +99,10 @@ echo ""
 echo "[assert] 1. Final state == LAND (harness exit code)"
 if [ "$HARNESS_EXIT" -eq 0 ]; then
   echo "         ✓ PASS — harness exited 0 (LAND reached)"
-  RESULTS+=("PASS: final state is LANDED")
+  RESULTS+=("PASS: final state is LAND")
 else
   echo "         ✗ FAIL — harness exited $HARNESS_EXIT (LAND not reached)"
-  RESULTS+=("FAIL: final state is NOT LANDED (exit=$HARNESS_EXIT)")
+  RESULTS+=("FAIL: final state is NOT LAND (exit=$HARNESS_EXIT)")
   OVERALL_PASS=false
 fi
 
