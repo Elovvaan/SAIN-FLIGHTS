@@ -135,7 +135,8 @@ export function detectInstability(
  * 0 = perfectly stable (on the stable-band boundary or within it).
  * 1 = at or beyond the maximum allowed angle.
  *
- * The score is the ratio of the largest angle deviation to the max angle limit.
+ * The score is 0 within the stable band, then scales linearly up to 1 at the
+ * max angle limit.
  *
  * @param imuState  Current IMU reading.
  * @param config    Threshold configuration.
@@ -147,8 +148,14 @@ export function computeStabilityScore(
 ): number {
   if (!imuState.valid) return 0;
   if (!Number.isFinite(imuState.roll) || !Number.isFinite(imuState.pitch)) return 0;
+
   const maxDeviation = Math.max(Math.abs(imuState.roll), Math.abs(imuState.pitch));
-  return Math.min(1, maxDeviation / config.maxAngleRad);
+  if (maxDeviation <= config.stableBandRad) return 0;
+
+  const scoreRange = config.maxAngleRad - config.stableBandRad;
+  if (!Number.isFinite(scoreRange) || scoreRange <= 0) return 0;
+
+  return Math.min(1, Math.max(0, (maxDeviation - config.stableBandRad) / scoreRange));
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
