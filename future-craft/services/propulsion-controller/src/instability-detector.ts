@@ -155,12 +155,9 @@ export function computeStabilityScore(
   if (!Number.isFinite(imuState.roll) || !Number.isFinite(imuState.pitch)) return 0;
 
   const maxDeviation = Math.max(Math.abs(imuState.roll), Math.abs(imuState.pitch));
-  if (maxDeviation <= config.stableBandRad) return 0;
+  if (!Number.isFinite(config.maxAngleRad) || config.maxAngleRad <= 0) return 0;
 
-  const scoreRange = config.maxAngleRad - config.stableBandRad;
-  if (!Number.isFinite(scoreRange) || scoreRange <= 0) return 0;
-
-  return Math.min(1, Math.max(0, (maxDeviation - config.stableBandRad) / scoreRange));
+  return Math.min(1, Math.max(0, maxDeviation / config.maxAngleRad));
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
