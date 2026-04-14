@@ -54,6 +54,7 @@ async function checkNatsReachable(): Promise<void> {
   }
 }
 
+
 async function waitForState(nc: NatsConnection, targetState: VehicleState, timeoutMs = 5000): Promise<boolean> {
   return new Promise((resolve) => {
     const sub = nc.subscribe(TOPICS.STATE_CHANGED);
@@ -165,6 +166,31 @@ async function main() {
   console.log(`  Final state: ${currentState}`);
   console.log('='.repeat(60));
   console.log('');
+  console.log('[BOOT COMMAND]');
+  console.log('  pnpm dev:sim');
+  console.log('');
+  console.log('[EXPECTED CONSOLE OUTPUT FLOW]');
+  console.log('  1. NATS server starts');
+  console.log('  2. All services connect and subscribe');
+  console.log('  3. sim-harness publishes intents in sequence');
+  console.log('  4. Each intent flows: intent.received → safety.check → intent.approved → state.changed');
+  console.log('  5. flight-orchestrator and propulsion-controller handle each state');
+  console.log('  6. field-controller activates on FIELD_TEST');
+  console.log('  7. telemetry-logger records all events to SQLite');
+  console.log('');
+  console.log('[EXAMPLE TELEMETRY ROWS]');
+  console.log('  id=1  topic=vehicle.intent.received   payload={"intent":"RUN_CHECKS",...}');
+  console.log('  id=2  topic=vehicle.safety.check       payload={"intent":"RUN_CHECKS",...}');
+  console.log('  id=3  topic=vehicle.intent.approved    payload={"intent":"RUN_CHECKS",...}');
+  console.log('  id=4  topic=vehicle.state.changed      payload={"previousState":"IDLE","currentState":"RUN_CHECKS",...}');
+  console.log('');
+  if (currentState === 'LAND') {
+    console.log('[SEQUENCE STATUS] COMPLETE ✓');
+    console.log('  RUN_CHECKS → ARM → TAKEOFF → HOVER_STABLE → FOLLOW → HOLD_POSITION → FIELD_TEST → LAND');
+  } else {
+    console.log('[SEQUENCE STATUS] INCOMPLETE ✗');
+    console.log(`  Sequence stopped before LAND; final state: ${currentState}`);
+  }
 
   await nc.drain();
   process.exit(currentState === 'LAND' ? 0 : 1);

@@ -7,6 +7,7 @@ cd "$REPO_ROOT"
 # Force localhost-only NATS URL — no LAN binding, no external callbacks
 export NATS_URL="nats://127.0.0.1:4222"
 
+
 if ! command -v nats-server &> /dev/null; then
   echo ""
   echo "ERROR: nats-server not found."
