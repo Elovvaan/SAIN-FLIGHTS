@@ -121,7 +121,7 @@ export function setHardwareValidationResult(report: HardwareValidationReport): v
   emitHardwareValidationTelemetry(
     'validation_result_stored',
     report.overall === 'GO' ? 'PASS' : 'FAIL',
-    { overall: report.overall, failureReasons: report.failureReasons },
+    { overall: report.overall, ...(report.failureReasons.length > 0 && { failureReasons: report.failureReasons }) },
     logger,
   );
 }

@@ -66,6 +66,12 @@ export const MIXER_INTERFERENCE_TOLERANCE = 0.01;
 export const ESC_LINEARITY_TOLERANCE = 0.5;
 
 /**
+ * Minimum vibration value used as a guard against division by zero when
+ * computing the vibration ratio in ESC linearity checks.
+ */
+export const MIN_VIBRATION_THRESHOLD = 1e-9;
+
+/**
  * Maximum fractional deviation of any phase-step's total vibration from the
  * mean across all steps.  Values above this indicate directional bias in the
  * phase response.
@@ -416,7 +422,7 @@ export function validateEscLinearity(
 
       // 2. Vibration ratio must be proportional to throttle ratio.
       const throttleRatio = m.levels[i] / m.levels[i - 1];
-      const vibrationRatio = currVib / Math.max(prevVib, 1e-9);
+      const vibrationRatio = currVib / Math.max(prevVib, MIN_VIBRATION_THRESHOLD);
       const minAcceptableRatio = throttleRatio * ESC_LINEARITY_TOLERANCE;
 
       if (vibrationRatio < minAcceptableRatio) {
