@@ -47,10 +47,9 @@ async function checkNatsReachable(): Promise<void> {
     console.log(`[${SERVICE}] NATS reachable at ${NATS_URL}`);
   } catch (err) {
     const msg = err instanceof NatsError ? err.message : String(err);
-    console.error(`\n[${SERVICE}] FATAL: NATS not reachable on 127.0.0.1:4222`);
+    console.error(`\n[${SERVICE}] FATAL: NATS not reachable at ${NATS_URL}`);
     console.error(`[${SERVICE}] Reason: ${msg}`);
-    console.error(`\nTo start NATS locally:`);
-    console.error(`  nats-server -a 127.0.0.1 -p 4222\n`);
+    console.error(`\nEnsure a NATS server is running and reachable at ${NATS_URL}\n`);
     process.exit(1);
   }
 }
