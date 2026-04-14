@@ -12,6 +12,23 @@ const ConfigSchema = z.object({
   FC_MAVLINK_HOST: z.string().default('127.0.0.1'),
   FC_MAVLINK_PORT: z.coerce.number().default(14550),
   FC_MAVLINK_TARGET_SYS: z.coerce.number().default(1),
+  // ── Version-1 tangential-field control mode ────────────────────────────────
+  // When true, propulsion-controller routes motion plans through the field
+  // solver rather than the flat avgLift model.
+  FIELD_MODE_ENABLED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  // Phase advance rate in radians per second (default ≈ one full rotation / 2 s).
+  FIELD_PHASE_VELOCITY: z.coerce.number().default(Math.PI),
+  // Spin direction: any value ≥ 0 = clockwise (1), negative = counter-clockwise (−1).
+  FIELD_SPIN: z.coerce
+    .number()
+    .default(1)
+    .transform((v) => (v >= 0 ? 1 : -1) as 1 | -1),
+  // Scale applied to solver outputs before sending to the flight controller.
+  // 1.0 = full range [0..1]; reduce to limit maximum motor power.
+  FIELD_OUTPUT_SCALE: z.coerce.number().min(0).max(1).default(1),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

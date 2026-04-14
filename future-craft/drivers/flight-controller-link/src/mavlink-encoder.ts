@@ -119,3 +119,48 @@ export function buildCommandLong(
   payload[32] = confirmation;
   return buildPacket(76, 152, payload);
 }
+
+/**
+ * Build a MAVLink 2.0 SET_ACTUATOR_CONTROL_TARGET packet (msg_id=140,
+ * crc_extra=168).
+ *
+ * This is the primary per-actuator control primitive in ArduPilot/PX4 SITL
+ * and real hardware.  For group 0 (the main motor mixer group), controls[0..3]
+ * map to the four motor channels after the mixer applies its mixing matrix.
+ *
+ * Wire layout (little-endian):
+ *   uint64  time_usec      (8 bytes)  — 0 = use FC system time
+ *   float[8] controls      (32 bytes) — normalised [0..1] for thrust channels
+ *   uint8   group_mlx      (1 byte)   — mixer group (0 = primary)
+ *   uint8   target_system  (1 byte)
+ *   uint8   target_comp    (1 byte)
+ *
+ * Hardware note: ArduPilot must have SERVO_PASS_THRU enabled (or the vehicle
+ * must be in a mode that accepts attitude/actuator targets) for these values
+ * to reach the ESCs directly.  In standard GUIDED mode the FC applies its own
+ * mixer; to command raw per-motor PWM you need passthrough mode or ACRO with
+ * a custom mixer.  See README §Field Mode for details.
+ *
+ * @param targetSystem  MAVLink system ID of the FC (typically 1)
+ * @param controls      8-element array; only [0..3] are used for 4 motors.
+ *                      Values must be in [0, 1]; values outside this range
+ *                      are clamped by the caller before passing here.
+ * @param group         Mixer group (default 0 = primary motor group)
+ */
+export function buildSetActuatorControlTarget(
+  targetSystem: number,
+  controls: readonly [number, number, number, number, number, number, number, number],
+  group = 0,
+): Buffer {
+  // Payload: uint64(8) + float[8](32) + uint8(1) + uint8(1) + uint8(1) = 43 bytes
+  const payload = Buffer.allocUnsafe(43);
+  // time_usec = 0 → FC uses its own timestamp
+  payload.writeBigUInt64LE(0n, 0);
+  for (let i = 0; i < 8; i++) {
+    payload.writeFloatLE(controls[i], 8 + i * 4);
+  }
+  payload[40] = group;
+  payload[41] = targetSystem;
+  payload[42] = 1; // target_component = 1 (autopilot)
+  return buildPacket(140, 168, payload);
+}

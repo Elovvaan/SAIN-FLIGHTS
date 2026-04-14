@@ -21,6 +21,7 @@ import type { FlightControllerLink } from '@future-craft/hardware-abstraction';
 import {
   buildHeartbeat,
   buildCommandLong,
+  buildSetActuatorControlTarget,
   MAV_CMD_COMPONENT_ARM_DISARM,
   MAV_CMD_NAV_TAKEOFF,
   MAV_CMD_NAV_LAND,
@@ -155,8 +156,40 @@ export class MavlinkFlightControllerLink implements FlightControllerLink {
     }
   }
 
-  // ── Health ─────────────────────────────────────────────────────────────────
+  // ── Direct actuator output (field mode) ────────────────────────────────────
 
+  /**
+   * Send per-motor outputs to the flight controller via
+   * SET_ACTUATOR_CONTROL_TARGET (msg_id=140).
+   *
+   * Each value in `outputs` must be in [0, 1]; values are passed directly as
+   * controls[0..3] in mixer group 0.  In ArduPilot/PX4 GUIDED mode the FC
+   * applies its own mixer matrix before driving the ESCs, so this is
+   * effectively an attitude-rate/thrust demand rather than raw PWM.  For true
+   * per-motor passthrough, the vehicle must be configured for passthrough mode
+   * or a custom mixer that maps these channels 1-to-1.
+   *
+   * In all cases the FC remains responsible for arming interlocks — this call
+   * is silently dropped if the link is not armed.
+   */
+  async setActuatorOutputs(outputs: [number, number, number, number]): Promise<void> {
+    if (!this.armed) {
+      logger.warn('setActuatorOutputs called while disarmed — command ignored');
+      return;
+    }
+
+    const controls: [number, number, number, number, number, number, number, number] = [
+      outputs[0], outputs[1], outputs[2], outputs[3],
+      0, 0, 0, 0, // channels 4-7 unused
+    ];
+    await this.send(buildSetActuatorControlTarget(this.targetSystem, controls, 0));
+    logger.debug(
+      { outputs },
+      'MavlinkFlightControllerLink: SET_ACTUATOR_CONTROL_TARGET sent',
+    );
+  }
+
+  // ── Health ─────────────────────────────────────────────────────────────────
   async getHealth(): Promise<{ healthy: boolean; cells: boolean[] }> {
     const healthy = this.connected && this.socket !== null;
     return { healthy, cells: [healthy, healthy, healthy, healthy] };

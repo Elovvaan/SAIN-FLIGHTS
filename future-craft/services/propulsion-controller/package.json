@@ -4,7 +4,8 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --require tsx/cjs --test src/field-solver.test.ts"
   },
   "dependencies": {
     "@future-craft/schemas": "workspace:*",

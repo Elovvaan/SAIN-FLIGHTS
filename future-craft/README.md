@@ -200,6 +200,90 @@ the variable entirely — it defaults to `sim`).
 
 ---
 
+## Version-1 Tangential-Field Control Mode
+
+`propulsion-controller` ships two parallel control paths that coexist behind
+the same NATS `vehicle.motion.plan` subscription:
+
+| Mode | Control model | Activated by |
+|---|---|---|
+| **avgLift** (default) | Flat equal-throttle; maps motion-plan type to a fixed `setThrottle()` call | `FIELD_MODE_ENABLED=false` (default) |
+| **field mode** (V1) | 4-node tangential-field solver; continuously advances a phase angle and drives per-motor outputs via `setActuatorOutputs()` | `FIELD_MODE_ENABLED=true` |
+
+### Control model overview
+
+The Version-1 model replaces the flat `avgLift` average with a **FieldState**
+that carries:
+
+```
+intensity      — master lift / energy level, 0–100
+phase          — current phase angle (radians)
+phaseVelocity  — phase advance rate (radians/second)
+spin           — rotation direction: 1 = CW, −1 = CCW
+bias           — contraction/expansion bias, −1 to +1
+enabled        — field modulation on/off
+```
+
+Motor outputs are computed by `field-solver.ts` as:
+
+```
+A = base + amplitude × sin(phase + 0°)
+B = base + amplitude × sin(phase + 90°)
+C = base + amplitude × sin(phase + 180°)
+D = base + amplitude × sin(phase + 270°)
+```
+
+where `base = intensity / 100` (adjusted by `bias`) and `amplitude = base × 0.3`.
+All outputs are clamped to `[0, 1]`.  The four evenly-spaced phase offsets
+guarantee that the average across all motors always equals `base` — no net
+torque is introduced by the phase rotation alone.
+
+The phase advances at 20 Hz via an internal `setInterval` loop, so the field
+rotates continuously without requiring new motion-plan messages.
+
+### New environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `FIELD_MODE_ENABLED` | `false` | `true` activates Version-1 field mode |
+| `FIELD_PHASE_VELOCITY` | `3.14159…` (π) | Phase advance rate in rad/s (≈ 1 rotation / 2 s) |
+| `FIELD_SPIN` | `1` | `1` = clockwise; any negative value = counter-clockwise |
+| `FIELD_OUTPUT_SCALE` | `1` | Scale factor `[0, 1]` applied to solver outputs before sending to FC |
+
+### Field mode in simulation vs hardware
+
+| Adapter | `setActuatorOutputs()` behaviour |
+|---|---|
+| `SimFlightControllerLink` | Logs outputs at `debug` level — no hardware required |
+| `MavlinkFlightControllerLink` | Sends `SET_ACTUATOR_CONTROL_TARGET` (msg_id=140) via UDP to the FC |
+
+**MAVLink hardware note:** `SET_ACTUATOR_CONTROL_TARGET` (group 0) in standard
+ArduPilot GUIDED mode routes through the FC mixer matrix before reaching the
+ESCs.  For true 1-to-1 per-motor passthrough, the vehicle must be configured
+with `SERVO_PASS_THRU` or a custom mixer that maps channels 0–3 directly to
+motors A–D.  The arm/disarm and takeoff/land paths are **not** affected by
+field mode.
+
+### Enabling field mode for SITL testing
+
+```bash
+# .env (or export in shell)
+FIELD_MODE_ENABLED=true
+FIELD_PHASE_VELOCITY=3.14159265358979   # 1 rotation / 2 s
+FIELD_SPIN=1                            # clockwise
+FIELD_OUTPUT_SCALE=0.8                  # limit to 80 % power during testing
+FC_HARDWARE_MODE=sim                    # or mavlink for SITL
+```
+
+### Field-solver tests
+
+```bash
+cd future-craft
+pnpm --filter @future-craft/propulsion-controller test
+```
+
+---
+
 ## Tech Stack
 
 - **TypeScript** + **tsx** for all Node.js services
