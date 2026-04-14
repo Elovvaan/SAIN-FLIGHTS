@@ -10,6 +10,8 @@ import { solveField, advancePhase } from './field-solver';
 import type { FieldState } from './field-solver';
 import { applyFieldStabilization } from './field-stabilizer';
 import type { ImuState, StabilizerConfig } from './field-stabilizer';
+import { translateField } from './field-translator';
+import type { TranslatorConfig } from './field-translator';
 
 const logger = pino({ name: 'propulsion-controller', level: config.LOG_LEVEL });
 const flightCtrl = createFlightControllerLink(
@@ -41,6 +43,13 @@ const stabConfig: StabilizerConfig = {
   kiAlt: config.FIELD_KI_ALT,
 };
 
+/** Translator gain / enable config derived from environment variables. */
+const translatorConfig: TranslatorConfig = {
+  enabled: config.FIELD_TRANSLATION_ENABLED,
+  translationGain: config.FIELD_TRANSLATION_GAIN,
+  biasGain: config.FIELD_BIAS_GAIN,
+};
+
 /** Target hover altitude in metres; set when a motion plan carries one. */
 let targetAltM: number | undefined;
 
@@ -68,6 +77,8 @@ let fieldState: FieldState = {
   spin: config.FIELD_SPIN,
   bias: 0,
   enabled: false,
+  velocityX: 0,
+  velocityY: 0,
 };
 
 let fieldLoopTimer: ReturnType<typeof setInterval> | null = null;
@@ -105,6 +116,9 @@ function startFieldLoop(): void {
         stabConfig,
         targetAltM,
       );
+
+      // ── Apply field translation (directional movement via field offset) ──────
+      fieldState = translateField(fieldState, dtSeconds, translatorConfig);
 
       // ── Advance phase (natural field rotation) ──────────────────────────────
       fieldState = advancePhase(fieldState, dtSeconds);
@@ -181,7 +195,7 @@ async function applyMotionPlan(plan: MotionPlan): Promise<void> {
     targetAltM = plan.targetAltitudeM;
     startFieldLoop();
     logger.info(
-      { planType: plan.type, intensity, bias, phaseVelocity: fieldState.phaseVelocity, spin: fieldState.spin, targetAltM },
+      { planType: plan.type, intensity, bias, phaseVelocity: fieldState.phaseVelocity, spin: fieldState.spin, targetAltM, translationEnabled: translatorConfig.enabled },
       'propulsion-controller: field mode active',
     );
   } else {
