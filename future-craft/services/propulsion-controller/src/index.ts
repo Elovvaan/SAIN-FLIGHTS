@@ -2,11 +2,14 @@ import pino from 'pino';
 import { config } from '@future-craft/config';
 import { connectBus, publish, subscribe, TOPICS } from '@future-craft/message-bus';
 import { createFlightControllerLink } from '@future-craft/flight-controller-link';
+import { SimSensorLink } from '@future-craft/sensor-link';
 import {
   MotionPlan, StateChangedEvent, PropulsionHealth,
 } from '@future-craft/schemas';
 import { solveField, advancePhase } from './field-solver';
 import type { FieldState } from './field-solver';
+import { applyFieldStabilization } from './field-stabilizer';
+import type { ImuState, StabilizerConfig } from './field-stabilizer';
 
 const logger = pino({ name: 'propulsion-controller', level: config.LOG_LEVEL });
 const flightCtrl = createFlightControllerLink(
@@ -15,6 +18,31 @@ const flightCtrl = createFlightControllerLink(
   config.FC_MAVLINK_PORT,
   config.FC_MAVLINK_TARGET_SYS,
 );
+
+// ── Sensor link (IMU / altitude reads for field stabilization) ────────────────
+
+// Use the sim sensor link in sim mode; in hardware (MAVLink) mode no sensor
+// link implementation is available yet, so stabilization is safely bypassed
+// via imuState.valid = false until hardware IMU integration is added.
+const sensorLink: SimSensorLink | null =
+  config.FC_HARDWARE_MODE === 'sim' ? new SimSensorLink() : null;
+
+/** Latest IMU snapshot; starts invalid so stabilization is bypassed until the
+ *  first successful sensor read. */
+let imuState: ImuState = { roll: 0, pitch: 0, yaw: 0, valid: false };
+
+/** Stabilizer gain / enable config derived from environment variables. */
+const stabConfig: StabilizerConfig = {
+  enabled: config.FIELD_STABILIZATION_ENABLED,
+  kpPitch: config.FIELD_KP_PITCH,
+  kpRoll: config.FIELD_KP_ROLL,
+  kbPitch: config.FIELD_KB_PITCH,
+  kbRoll: config.FIELD_KB_ROLL,
+  kiAlt: config.FIELD_KI_ALT,
+};
+
+/** Target hover altitude in metres; set when a motion plan carries one. */
+let targetAltM: number | undefined;
 
 // ── Field-mode state ──────────────────────────────────────────────────────────
 
@@ -56,7 +84,31 @@ function startFieldLoop(): void {
       const now = Date.now();
       const dtSeconds = (now - lastFieldUpdateMs) / 1000;
       lastFieldUpdateMs = now;
+
+      // ── Poll IMU (best-effort; invalid state bypasses stabilization) ────────
+      if (sensorLink !== null) {
+        try {
+          const imu = await sensorLink.readImu();
+          const alt = await sensorLink.readAltitudeM();
+          imuState = { ...imu, altitude: alt, valid: true };
+        } catch {
+          imuState = { ...imuState, valid: false };
+        }
+      }
+
+      // ── Apply field stabilization BEFORE the field solver ───────────────────
+      fieldState = applyFieldStabilization(
+        fieldState,
+        imuState,
+        dtSeconds,
+        stabConfig,
+        targetAltM,
+      );
+
+      // ── Advance phase (natural field rotation) ──────────────────────────────
       fieldState = advancePhase(fieldState, dtSeconds);
+
+      // ── Solve field and route to actuators ──────────────────────────────────
       const outputs = solveField(fieldState).map(
         (v) => v * config.FIELD_OUTPUT_SCALE,
       ) as [number, number, number, number];
@@ -124,9 +176,11 @@ async function applyMotionPlan(plan: MotionPlan): Promise<void> {
     }
 
     fieldState = { ...fieldState, intensity, bias, enabled: true };
+    // Track the plan's altitude target so the stabilizer can correct vertical drift.
+    targetAltM = plan.targetAltitudeM;
     startFieldLoop();
     logger.info(
-      { planType: plan.type, intensity, bias, phaseVelocity: fieldState.phaseVelocity, spin: fieldState.spin },
+      { planType: plan.type, intensity, bias, phaseVelocity: fieldState.phaseVelocity, spin: fieldState.spin, targetAltM },
       'propulsion-controller: field mode active',
     );
   } else {
@@ -154,9 +208,12 @@ async function applyMotionPlan(plan: MotionPlan): Promise<void> {
 
 async function main(): Promise<void> {
   await flightCtrl.connect();
+  if (sensorLink !== null) {
+    await sensorLink.connect();
+  }
   await connectBus();
   logger.info(
-    { fieldModeEnabled: config.FIELD_MODE_ENABLED },
+    { fieldModeEnabled: config.FIELD_MODE_ENABLED, stabilizationEnabled: config.FIELD_STABILIZATION_ENABLED },
     'propulsion-controller started',
   );
 

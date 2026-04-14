@@ -29,6 +29,22 @@ const ConfigSchema = z.object({
   // Scale applied to solver outputs before sending to the flight controller.
   // 1.0 = full range [0..1]; reduce to limit maximum motor power.
   FIELD_OUTPUT_SCALE: z.coerce.number().min(0).max(1).default(1),
+  // ── Field stabilization (IMU-driven phase / bias / intensity correction) ────
+  // When true, applyFieldStabilization() is called every field-loop tick.
+  FIELD_STABILIZATION_ENABLED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  // Phase-correction proportional gain for pitch error (rad/s per rad).
+  FIELD_KP_PITCH: z.coerce.number().default(0.8),
+  // Phase-correction proportional gain for roll error (rad/s per rad).
+  FIELD_KP_ROLL: z.coerce.number().default(0.8),
+  // Bias-correction gain for pitch error (bias-units/s per rad).
+  FIELD_KB_PITCH: z.coerce.number().default(0.2),
+  // Bias-correction gain for roll error (bias-units/s per rad).
+  FIELD_KB_ROLL: z.coerce.number().default(0.2),
+  // Intensity-correction gain for altitude error (%/s per metre).
+  FIELD_KI_ALT: z.coerce.number().default(0.1),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
