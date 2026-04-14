@@ -107,13 +107,13 @@ export function solveField(
   const amplitude = adjustedBase * MODULATION_FRACTION;
 
   // Spin direction is applied by negating the phase for CCW rotation.
-  const effectivePhase = state.phase * state.spin;
+  const spinAdjustedPhase = state.phase * state.spin;
 
   return [
-    clamp01(adjustedBase + amplitude * Math.sin(effectivePhase + MOTOR_PHASE_OFFSETS[0])),
-    clamp01(adjustedBase + amplitude * Math.sin(effectivePhase + MOTOR_PHASE_OFFSETS[1])),
-    clamp01(adjustedBase + amplitude * Math.sin(effectivePhase + MOTOR_PHASE_OFFSETS[2])),
-    clamp01(adjustedBase + amplitude * Math.sin(effectivePhase + MOTOR_PHASE_OFFSETS[3])),
+    clamp01(adjustedBase + amplitude * Math.sin(spinAdjustedPhase + MOTOR_PHASE_OFFSETS[0])),
+    clamp01(adjustedBase + amplitude * Math.sin(spinAdjustedPhase + MOTOR_PHASE_OFFSETS[1])),
+    clamp01(adjustedBase + amplitude * Math.sin(spinAdjustedPhase + MOTOR_PHASE_OFFSETS[2])),
+    clamp01(adjustedBase + amplitude * Math.sin(spinAdjustedPhase + MOTOR_PHASE_OFFSETS[3])),
   ];
 }
 

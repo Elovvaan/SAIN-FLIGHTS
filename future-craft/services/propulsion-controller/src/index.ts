@@ -32,22 +32,27 @@ let fieldState: FieldState = {
 
 let fieldLoopTimer: ReturnType<typeof setInterval> | null = null;
 let lastFieldUpdateMs = Date.now();
+let fieldLoopRunning = false; // guard against overlapping iterations
 
 function startFieldLoop(): void {
   if (fieldLoopTimer !== null) return; // already running
   lastFieldUpdateMs = Date.now();
   fieldLoopTimer = setInterval(async () => {
-    const now = Date.now();
-    const dtSeconds = (now - lastFieldUpdateMs) / 1000;
-    lastFieldUpdateMs = now;
-    fieldState = advancePhase(fieldState, dtSeconds);
-    const outputs = solveField(fieldState).map(
-      (v) => v * config.FIELD_OUTPUT_SCALE,
-    ) as [number, number, number, number];
+    if (fieldLoopRunning) return; // skip if previous iteration is still in-flight
+    fieldLoopRunning = true;
     try {
+      const now = Date.now();
+      const dtSeconds = (now - lastFieldUpdateMs) / 1000;
+      lastFieldUpdateMs = now;
+      fieldState = advancePhase(fieldState, dtSeconds);
+      const outputs = solveField(fieldState).map(
+        (v) => v * config.FIELD_OUTPUT_SCALE,
+      ) as [number, number, number, number];
       await flightCtrl.setActuatorOutputs(outputs);
     } catch (err) {
       logger.warn({ err }, 'field loop: setActuatorOutputs failed');
+    } finally {
+      fieldLoopRunning = false;
     }
   }, FIELD_LOOP_INTERVAL_MS);
 }
@@ -57,6 +62,7 @@ function stopFieldLoop(): void {
     clearInterval(fieldLoopTimer);
     fieldLoopTimer = null;
   }
+  fieldLoopRunning = false;
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
