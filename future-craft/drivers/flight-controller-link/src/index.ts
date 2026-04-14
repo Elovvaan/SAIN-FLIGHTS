@@ -35,6 +35,14 @@ export class SimFlightControllerLink implements FlightControllerLink {
     logger.debug({ liftCells, thrustPct }, 'SimFlightControllerLink: setThrottle');
   }
 
+  async setActuatorOutputs(outputs: [number, number, number, number]): Promise<void> {
+    if (!this.armed) {
+      logger.warn('setActuatorOutputs called while disarmed — command ignored');
+      return;
+    }
+    logger.debug({ outputs }, 'SimFlightControllerLink: setActuatorOutputs');
+  }
+
   async getHealth(): Promise<{ healthy: boolean; cells: boolean[] }> {
     return { healthy: true, cells: [true, true, true, true] };
   }

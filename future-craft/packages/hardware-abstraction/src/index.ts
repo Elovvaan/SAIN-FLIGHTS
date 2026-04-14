@@ -4,6 +4,15 @@ export interface FlightControllerLink {
   arm(): Promise<void>;
   disarm(): Promise<void>;
   setThrottle(liftCells: [number, number, number, number], thrustPct: number): Promise<void>;
+  /**
+   * Send direct per-motor output values to the flight controller.
+   *
+   * Each element in `outputs` corresponds to one motor (A, B, C, D) and must
+   * be normalised to [0, 1].  This method is used by the Version-1
+   * tangential-field control path; the standard avgLift path continues to use
+   * setThrottle().
+   */
+  setActuatorOutputs(outputs: [number, number, number, number]): Promise<void>;
   getHealth(): Promise<{ healthy: boolean; cells: boolean[] }>;
 }
 
