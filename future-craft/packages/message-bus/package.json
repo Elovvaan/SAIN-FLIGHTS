@@ -1,0 +1,8 @@
+{
+  "name": "@future-craft/message-bus",
+  "version": "0.1.0",
+  "main": "src/index.ts",
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": { "nats": "^2.28.2", "pino": "^9.1.0", "@future-craft/config": "workspace:*" },
+  "devDependencies": { "typescript": "^5.4.5", "@types/node": "^20.12.7" }
+}

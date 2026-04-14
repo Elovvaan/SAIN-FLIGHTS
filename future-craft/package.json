@@ -1,0 +1,22 @@
+{
+  "name": "future-craft",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm run --parallel --filter './apps/*' --filter './services/*' dev",
+    "dev:core": "pnpm run --parallel --filter './services/state-engine' --filter './services/command-service' --filter './services/safety-supervisor' --filter './services/flight-orchestrator' --filter './services/propulsion-controller' --filter './services/energy-manager' --filter './services/telemetry-logger' --filter './services/agent-runtime' --filter './services/audio-io' dev",
+    "dev:sim": "pnpm --filter './apps/sim-harness' run dev",
+    "build": "pnpm run --recursive build",
+    "typecheck": "pnpm run --recursive typecheck",
+    "lint": "pnpm run --recursive lint",
+    "test": "pnpm run --recursive test",
+    "start:nats": "nats-server",
+    "start:vehicle": "pnpm --filter './apps/vehicle-runtime' run start",
+    "start:perception": "cd services/perception-engine && uvicorn main:app --host 0.0.0.0 --port 8010 --reload"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "tsx": "^4.11.0",
+    "@types/node": "^20.12.7"
+  }
+}

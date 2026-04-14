@@ -1,0 +1,8 @@
+{
+  "name": "@future-craft/config",
+  "version": "0.1.0",
+  "main": "src/index.ts",
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": { "dotenv": "^16.4.5", "zod": "^3.23.5" },
+  "devDependencies": { "typescript": "^5.4.5", "@types/node": "^20.12.7" }
+}

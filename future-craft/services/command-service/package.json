@@ -1,0 +1,16 @@
+{
+  "name": "@future-craft/command-service",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@future-craft/schemas": "workspace:*",
+    "@future-craft/message-bus": "workspace:*",
+    "@future-craft/config": "workspace:*",
+    "pino": "^9.1.0"
+  },
+  "devDependencies": { "typescript": "^5.4.5", "tsx": "^4.11.0", "@types/node": "^20.12.7" }
+}

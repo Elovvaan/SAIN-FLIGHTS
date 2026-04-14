@@ -1,0 +1,7 @@
+{
+  "name": "@future-craft/sensor-link",
+  "version": "0.1.0",
+  "main": "src/index.ts",
+  "dependencies": { "@future-craft/hardware-abstraction": "workspace:*", "pino": "^9.1.0" },
+  "devDependencies": { "typescript": "^5.4.5", "@types/node": "^20.12.7" }
+}
