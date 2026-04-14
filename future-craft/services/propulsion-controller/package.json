@@ -5,8 +5,7 @@
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "node --require tsx/cjs --test src/field-solver.test.ts src/field-stabilizer.test.ts src/field-translator.test.ts src/actuator-router.test.ts"
-    "test": "node --require tsx/cjs --test src/field-solver.test.ts src/field-stabilizer.test.ts src/field-translator.test.ts"
+    "test": "node --require tsx/cjs --test src/field-solver.test.ts src/field-stabilizer.test.ts src/field-translator.test.ts src/actuator-router.test.ts src/flight-state-machine.test.ts src/thrust-ramp-controller.test.ts src/instability-detector.test.ts src/lift-detector.test.ts src/telemetry-stream.test.ts"
   },
   "dependencies": {
     "@future-craft/schemas": "workspace:*",

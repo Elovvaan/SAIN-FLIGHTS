@@ -19,6 +19,19 @@ import {
 } from './actuator-router';
 import type { ActuatorRouterConfig } from './actuator-router';
 import { emitStartupBanner } from './startup-banner';
+import { FlightStateMachine } from './flight-state-machine';
+import {
+  computeRampedIntensity,
+  isRampComplete,
+} from './thrust-ramp-controller';
+import type { RampConfig } from './thrust-ramp-controller';
+import {
+  detectInstability,
+  computeStabilityScore,
+} from './instability-detector';
+import type { InstabilityConfig } from './instability-detector';
+import { detectLift } from './lift-detector';
+import { emitTelemetry } from './telemetry-stream';
 
 const logger = pino({ name: 'propulsion-controller', level: config.LOG_LEVEL });
 const flightCtrl = createFlightControllerLink(
@@ -80,6 +93,34 @@ const translatorConfig: TranslatorConfig = {
 /** Target hover altitude in metres; set when a motion plan carries one. */
 let targetAltM: number | undefined;
 
+// ── Hardware validation layer — safe-lift / tether / state machine ────────────
+
+/** Flight state machine — shared across all field-loop ticks. */
+const fsm = new FlightStateMachine();
+
+/** Instability detection thresholds. */
+const instabilityConfig: InstabilityConfig = {
+  maxAngleRad:     config.INSTABILITY_MAX_ANGLE_RAD,
+  maxRateRadS:     config.INSTABILITY_MAX_RATE_RAD_S,
+  stableBandRad:   config.INSTABILITY_STABLE_BAND_RAD,
+};
+
+/** Ramp profile derived from config (used in safe-lift and tether modes). */
+const rampConfig: RampConfig = {
+  minIntensity:    config.SAFE_LIFT_MIN_INTENSITY,
+  targetIntensity: config.SAFE_LIFT_MAX_INTENSITY,
+  rampDurationMs:  config.SAFE_LIFT_RAMP_DURATION_MS,
+};
+
+/** Timestamp (ms) when the current ramp was started. */
+let rampStartMs: number | null = null;
+
+/** Previous IMU snapshot — used for angular-rate estimation and lift detection. */
+let prevImuState: ImuState = { roll: 0, pitch: 0, yaw: 0, valid: false };
+
+/** Ground-reference altitude captured at arm time (metres). */
+let groundAltM: number | undefined;
+
 // ── Field-mode state ──────────────────────────────────────────────────────────
 
 /** Control loop interval for field-mode phase advancement (20 Hz). */
@@ -128,11 +169,70 @@ function startFieldLoop(): void {
         try {
           const imu = await sensorLink.readImu();
           const alt = await sensorLink.readAltitudeM();
+          prevImuState = imuState; // save before overwrite for rate estimation
           imuState = { ...imu, altitude: alt, valid: true };
         } catch (err) {
+          prevImuState = imuState;
           imuState = { ...imuState, valid: false };
           logger.debug({ err }, 'field loop: IMU read failed — stabilization bypassed this tick');
         }
+      }
+
+      // ── Hard abort: NaN or invalid outputs guard ────────────────────────────
+      const imuHasNaN =
+        imuState.valid &&
+        (!Number.isFinite(imuState.roll) ||
+         !Number.isFinite(imuState.pitch) ||
+         !Number.isFinite(imuState.yaw));
+
+      if (imuHasNaN && !fsm.isAborted()) {
+        triggerHardAbort('IMU NaN detected in field loop');
+      }
+
+      // ── Safe-lift / tether mode: enforce safe-band constraints ──────────────
+      // In safe-lift / tether mode, translation is locked (velocityX=0,
+      // velocityY=0) and intensity is limited to rampConfig.targetIntensity.
+      // FIELD_TRANSLATION_ENABLED is still respected in normal mode.
+      const safeLiftActive = config.SAFE_LIFT_MODE || config.TETHER_MODE;
+      if (safeLiftActive && fieldState.enabled) {
+        // Lock translation.
+        fieldState = { ...fieldState, velocityX: 0, velocityY: 0 };
+
+        // Continue ramp progression once started, even if another event moves the
+        // FSM out of RAMPING before the duration elapses.
+        if (rampStartMs !== null) {
+          const ramped = computeRampedIntensity(rampStartMs, now, rampConfig);
+          fieldState = { ...fieldState, intensity: ramped };
+
+          // Advance FSM when ramp completes.
+          if (isRampComplete(rampStartMs, now, rampConfig) && fsm.phase !== 'STABILIZING') {
+            const ok = fsm.requestTransition('STABILIZING', 'ramp_complete');
+            if (ok) {
+              logger.info(
+                { type: 'flight_event', event: 'ramp_complete', flightPhase: fsm.phase },
+                'safe-lift: ramp complete — entering STABILIZING',
+              );
+            }
+          }
+        } else if (fsm.phase === 'ARMED' || fsm.phase === 'IDLE') {
+          // Not yet ramping — hold at minimum intensity.
+          fieldState = { ...fieldState, intensity: rampConfig.minIntensity };
+        }
+
+        // Clamp intensity to safe band regardless of other corrections.
+        fieldState = {
+          ...fieldState,
+          intensity: Math.max(
+            rampConfig.minIntensity,
+            Math.min(rampConfig.targetIntensity, fieldState.intensity),
+          ),
+        };
+      }
+
+      // ── If aborted: cut all outputs immediately ─────────────────────────────
+      if (fsm.isAborted()) {
+        await flightCtrl.setActuatorOutputs([0, 0, 0, 0]);
+        return;
       }
 
       // ── Apply field stabilization BEFORE the field solver ───────────────────
@@ -152,12 +252,67 @@ function startFieldLoop(): void {
 
       // ── Solve field and route to actuators ──────────────────────────────────
       const solved = solveField(fieldState) as [number, number, number, number];
+
+      // ── Hard abort: output saturation / NaN guard ───────────────────────────
+      const outputHasNaN = solved.some((v) => !Number.isFinite(v));
+      const outputSaturated = solved.every((v) => v >= 1);
+      if ((outputHasNaN || outputSaturated) && !fsm.isAborted()) {
+        triggerHardAbort(
+          outputHasNaN
+            ? 'solver produced NaN outputs'
+            : 'output saturation detected — all motors at maximum',
+        );
+        await flightCtrl.setActuatorOutputs([0, 0, 0, 0]);
+        return;
+      }
+
       const routed = routeActuatorOutputs(solved, routerConfig);
       logger.debug(
         buildActuatorRouteLog(routed, routerConfig.outputMode),
         'propulsion-controller: actuator route',
       );
       await flightCtrl.setActuatorOutputs(routed.physical);
+
+      // ── Instability detection (only while flying) ───────────────────────────
+      if (fsm.isFlying()) {
+        const instability = detectInstability(
+          imuState,
+          prevImuState,
+          dtSeconds,
+          instabilityConfig,
+        );
+        if (instability.triggered) {
+          triggerHardAbort(instability.reason ?? 'flight_abort_instability');
+          await flightCtrl.setActuatorOutputs([0, 0, 0, 0]);
+          return;
+        }
+
+        // ── Lift detection ────────────────────────────────────────────────────
+        if (fsm.phase === 'RAMPING') {
+          const liftResult = detectLift(
+            imuState,
+            prevImuState,
+            dtSeconds,
+            groundAltM,
+          );
+          if (liftResult.liftDetected) {
+            const liftDetected = fsm.requestTransition('LIFT_DETECTED', `lift_detected via ${liftResult.method}`);
+            if (liftDetected) {
+              logger.info(
+                { type: 'flight_event', event: 'lift_detected', method: liftResult.method, flightPhase: fsm.phase },
+                'lift_detected',
+              );
+              fsm.requestTransition('STABILIZING', `stabilizing after lift detection via ${liftResult.method}`);
+            }
+          }
+        }
+      }
+
+      // ── Live telemetry stream ─────────────────────────────────────────────
+      if (config.TELEMETRY_ENABLED) {
+        const stabilityScore = computeStabilityScore(imuState, instabilityConfig);
+        emitTelemetry(fsm.phase, fieldState, solved, imuState, stabilityScore, logger);
+      }
     } catch (err) {
       logger.warn({ err }, 'field loop: setActuatorOutputs failed');
     } finally {
@@ -172,6 +327,39 @@ function stopFieldLoop(): void {
     fieldLoopTimer = null;
   }
   fieldLoopRunning = false;
+}
+
+/**
+ * Trigger a hard abort at any point in the flight lifecycle.
+ *
+ * Cuts intensity to 0, transitions FSM to ABORT, and logs a full state snapshot.
+ * Safe to call from any context — is a no-op if already aborted.
+ */
+function triggerHardAbort(reason: string): void {
+  if (fsm.isAborted()) return; // already aborted — no double-trigger
+
+  // Zero intensity immediately so the next tick sends zero outputs.
+  fieldState = { ...fieldState, intensity: 0, enabled: false };
+
+  const snapshot = fsm.snapshot();
+  fsm.requestTransition('ABORT', reason);
+
+  logger.error(
+    {
+      type: 'hard_abort',
+      reason,
+      flightPhase: snapshot.phase,
+      elapsedMs: snapshot.elapsedMs,
+      history: snapshot.history,
+      fieldState: {
+        intensity: fieldState.intensity,
+        phase: fieldState.phase,
+        bias: fieldState.bias,
+      },
+      imuState,
+    },
+    `HARD ABORT: ${reason}`,
+  );
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
@@ -220,12 +408,51 @@ async function applyMotionPlan(plan: MotionPlan): Promise<void> {
         break;
     }
 
+    // ── Safe-lift / tether mode overrides ────────────────────────────────────
+    const safeLiftActive = config.SAFE_LIFT_MODE || config.TETHER_MODE;
+    if (safeLiftActive) {
+      // Clamp intensity to safe band.
+      intensity = Math.min(intensity, config.SAFE_LIFT_MAX_INTENSITY);
+      // Lock translation.
+      fieldState = { ...fieldState, velocityX: 0, velocityY: 0 };
+    }
+
     fieldState = { ...fieldState, intensity, bias, enabled: true };
     // Track the plan's altitude target so the stabilizer can correct vertical drift.
     targetAltM = plan.targetAltitudeM;
+
+    // ── Initiate ramp if in ARMED state ──────────────────────────────────────
+    if (safeLiftActive && fsm.phase === 'ARMED') {
+      if (config.TETHER_MODE && !config.TETHER_CONFIRM) {
+        logger.warn(
+          { type: 'tether_confirm_required', flightPhase: fsm.phase },
+          'tethered test mode: TETHER_CONFIRM=false — ramp blocked; set TETHER_CONFIRM=true to proceed',
+        );
+      } else {
+        rampStartMs = Date.now();
+        const ok = fsm.requestTransition('RAMPING', 'ramp_start');
+        if (ok) {
+          logger.info(
+            { type: 'flight_event', event: 'ramp_start', rampConfig, flightPhase: fsm.phase },
+            config.TETHER_MODE ? 'tethered test: ramp_start' : 'safe-lift: ramp_start',
+          );
+        }
+      }
+    }
+
     startFieldLoop();
     logger.info(
-      { planType: plan.type, intensity, bias, phaseVelocity: fieldState.phaseVelocity, spin: fieldState.spin, targetAltM, translationEnabled: translatorConfig.enabled },
+      {
+        planType: plan.type,
+        intensity,
+        bias,
+        phaseVelocity: fieldState.phaseVelocity,
+        spin: fieldState.spin,
+        targetAltM,
+        translationEnabled: translatorConfig.enabled,
+        safeLiftActive,
+        flightPhase: fsm.phase,
+      },
       'propulsion-controller: field mode active',
     );
   } else {
@@ -266,6 +493,9 @@ async function main(): Promise<void> {
       translationEnabled: config.FIELD_TRANSLATION_ENABLED,
       hardwareMode: config.FC_HARDWARE_MODE,
       routerConfig,
+      safeLiftMode: config.SAFE_LIFT_MODE,
+      tetherMode: config.TETHER_MODE,
+      telemetryEnabled: config.TELEMETRY_ENABLED,
     },
     logger,
   );
@@ -335,10 +565,31 @@ async function main(): Promise<void> {
 
       // Reset field phase on each arm cycle.
       fieldState = { ...fieldState, phase: 0 };
+
+      // ── Transition FSM to ARMED ──────────────────────────────────────────
+      // Reset FSM to IDLE first (allows re-arming after a previous ABORT/IDLE).
+      if (fsm.phase === 'ABORT') {
+        fsm.requestTransition('IDLE', 'disarmed_after_abort');
+      }
+      if (fsm.phase !== 'ARMED') {
+        fsm.requestTransition('ARMED', 'armed');
+        // Capture ground-reference altitude for lift detection.
+        groundAltM = imuState.valid ? imuState.altitude : undefined;
+        logger.info(
+          { type: 'flight_event', event: 'armed', flightPhase: fsm.phase, groundAltM },
+          config.TETHER_MODE ? 'tethered test: armed' : 'safe-lift: armed',
+        );
+      }
+
       await flightCtrl.arm();
     }
     if (event.to === 'LANDED') {
       stopFieldLoop();
+      // Transition FSM back to IDLE on landing.
+      if (fsm.phase !== 'IDLE' && fsm.phase !== 'ABORT') {
+        fsm.requestTransition('IDLE', 'landed');
+      }
+      rampStartMs = null;
       await flightCtrl.disarm();
     }
   });

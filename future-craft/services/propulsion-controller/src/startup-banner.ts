@@ -29,6 +29,12 @@ export type StartupContext = {
   translationEnabled?: boolean;
   hardwareMode: 'sim' | 'mavlink';
   routerConfig: ActuatorRouterConfig;
+  /** Safe-lift mode: limits intensity, soft-start ramp, no translation. */
+  safeLiftMode?: boolean;
+  /** Tethered test mode: same as safe-lift but requires TETHER_CONFIRM before ramp. */
+  tetherMode?: boolean;
+  /** Telemetry stream enabled. */
+  telemetryEnabled?: boolean;
 };
 
 /**
@@ -52,6 +58,9 @@ export function emitStartupBanner(
       : { valid: true, errors: [] as string[], warnings: [] as string[] };
 
   const translationEnabled = ctx.translationEnabled ?? false;
+  const safeLiftMode = ctx.safeLiftMode ?? false;
+  const tetherMode = ctx.tetherMode ?? false;
+  const telemetryEnabled = ctx.telemetryEnabled ?? true;
 
   // Human-readable status line for the FC config check.
   let fcConfigStatus: string;
@@ -71,6 +80,9 @@ export function emitStartupBanner(
     `  Field mode         : ${ctx.fieldModeEnabled ? 'ENABLED' : 'disabled'}`,
     `  Stabilization      : ${ctx.stabilizationEnabled ? 'ENABLED' : 'disabled'}`,
     `  Translation        : ${translationEnabled ? 'ENABLED' : 'disabled'}`,
+    `  Safe-lift mode     : ${safeLiftMode ? 'ENABLED' : 'disabled'}`,
+    `  Tether mode        : ${tetherMode ? 'ENABLED' : 'disabled'}`,
+    `  Telemetry stream   : ${telemetryEnabled ? 'ENABLED' : 'disabled'}`,
     `  Output mode        : ${outputMode.toUpperCase()}`,
     `  Output scale       : ${outputScale}`,
     `  Motor channel map  : A→ch${channelMap.A}  B→ch${channelMap.B}  C→ch${channelMap.C}  D→ch${channelMap.D}`,
@@ -90,6 +102,9 @@ export function emitStartupBanner(
       fieldModeEnabled: ctx.fieldModeEnabled,
       stabilizationEnabled: ctx.stabilizationEnabled,
       translationEnabled,
+      safeLiftMode,
+      tetherMode,
+      telemetryEnabled,
       outputMode,
       outputScale,
       motorChannelMap: channelMap,

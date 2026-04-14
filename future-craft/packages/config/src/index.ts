@@ -95,6 +95,50 @@ const ConfigSchema = z.object({
     .string()
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
+  // ── Safe-lift mode ────────────────────────────────────────────────────────
+  // When true, limits intensity to SAFE_LIFT_MAX_INTENSITY, locks
+  // translation (velocityX=0, velocityY=0), and soft-starts thrust via the
+  // ramp controller. It does not itself override phase velocity or force
+  // stabilization mode.
+  SAFE_LIFT_MODE: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  // Minimum intensity for the safe-lift ramp (% of full scale, 0–100).
+  SAFE_LIFT_MIN_INTENSITY: z.coerce.number().min(0).max(100).default(10),
+  // Maximum intensity allowed while in safe-lift mode (% of full scale, 0–100).
+  SAFE_LIFT_MAX_INTENSITY: z.coerce.number().min(0).max(100).default(35),
+  // Ramp duration in milliseconds (time to travel from min to max intensity).
+  SAFE_LIFT_RAMP_DURATION_MS: z.coerce.number().min(0).default(3000),
+  // ── Tethered test mode ────────────────────────────────────────────────────
+  // When true, activates TETHER_MODE, which applies the same intensity cap,
+  // translation lock, and soft-start ramp behavior as SAFE_LIFT_MODE, but
+  // additionally requires TETHER_CONFIRM=true before the ramp will start.
+  // Every stage is logged: armed / ramp_start / lift_detected / instability.
+  TETHER_MODE: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  // Confirmation flag required before the tethered ramp will start.
+  TETHER_CONFIRM: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  // ── Instability detection thresholds ─────────────────────────────────────
+  // Maximum absolute roll or pitch (radians) before abort is triggered.
+  INSTABILITY_MAX_ANGLE_RAD: z.coerce.number().default(0.436),
+  // Maximum angular rate (radians/second) before abort is triggered.
+  INSTABILITY_MAX_RATE_RAD_S: z.coerce.number().default(1.571),
+  // Stable-band radius (radians); angles within ±this value are considered stable.
+  INSTABILITY_STABLE_BAND_RAD: z.coerce.number().default(0.087),
+  // ── Live telemetry stream ─────────────────────────────────────────────────
+  // When true, a structured telemetry frame is emitted on every field-loop tick.
+  // Disabled by default so normal runs do not generate high-volume telemetry logs
+  // unless explicitly enabled.
+  TELEMETRY_ENABLED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
