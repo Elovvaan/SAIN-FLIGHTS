@@ -184,8 +184,13 @@ async function main() {
   console.log('  id=3  topic=vehicle.intent.approved    payload={"intent":"RUN_CHECKS",...}');
   console.log('  id=4  topic=vehicle.state.changed      payload={"previousState":"IDLE","currentState":"RUN_CHECKS",...}');
   console.log('');
-  console.log('[SEQUENCE STATUS] COMPLETE ✓');
-  console.log('  RUN_CHECKS → ARM → TAKEOFF → HOVER_STABLE → FOLLOW → HOLD_POSITION → FIELD_TEST → LAND');
+  if (currentState === 'LAND') {
+    console.log('[SEQUENCE STATUS] COMPLETE ✓');
+    console.log('  RUN_CHECKS → ARM → TAKEOFF → HOVER_STABLE → FOLLOW → HOLD_POSITION → FIELD_TEST → LAND');
+  } else {
+    console.log('[SEQUENCE STATUS] INCOMPLETE ✗');
+    console.log(`  Sequence stopped before LAND; final state: ${currentState}`);
+  }
 
   await nc.drain();
   process.exit(currentState === 'LAND' ? 0 : 1);
