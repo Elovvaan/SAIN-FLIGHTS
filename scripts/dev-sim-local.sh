@@ -55,14 +55,21 @@ npx concurrently \
   "npx tsx apps/perception-engine/src/index.ts" &
 SERVICES_PID=$!
 
+cleanup() {
+  kill "$SERVICES_PID" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
 echo "[boot] Waiting for services to initialize (3s)..."
 sleep 3
 
 echo "[boot] Running sim-harness..."
+set +e
 npx tsx apps/sim-harness/src/index.ts
 HARNESS_EXIT=$?
+set -e
 
 echo "[boot] Sim-harness complete (exit=$HARNESS_EXIT). Shutting down services..."
-kill $SERVICES_PID 2>/dev/null || true
+cleanup
 
 exit $HARNESS_EXIT
