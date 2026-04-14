@@ -1,7 +1,7 @@
 /**
  * Startup verification banner for the propulsion-controller.
  *
- * Emits a structured log (pino) summarising all field-mode and execution-layer
+ * Emits a structured log (pino) summarizing all field-mode and execution-layer
  * configuration so operators can verify the system state before arming.
  *
  * Every banner entry is tagged with `type: 'startup_verification'` so it can

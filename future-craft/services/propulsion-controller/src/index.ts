@@ -64,7 +64,7 @@ const routerConfig: ActuatorRouterConfig = {
     C: config.MOTOR_C_INVERTED,
     D: config.MOTOR_D_INVERTED,
   },
-  // Router applies its own scale; the field-loop no longer multiplies inline.
+  // Router applies its own scale; the field loop no longer multiplies inline.
   outputScale: config.FIELD_OUTPUT_SCALE,
 };
 
