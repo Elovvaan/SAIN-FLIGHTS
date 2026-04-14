@@ -249,6 +249,12 @@ rotates continuously without requiring new motion-plan messages.
 | `FIELD_PHASE_VELOCITY` | `3.14159…` (π) | Phase advance rate in rad/s (≈ 1 rotation / 2 s) |
 | `FIELD_SPIN` | `1` | `1` = clockwise; any negative value = counter-clockwise |
 | `FIELD_OUTPUT_SCALE` | `1` | Scale factor `[0, 1]` applied to solver outputs before sending to FC |
+| `FIELD_STABILIZATION_ENABLED` | `false` | `true` activates IMU-driven field stabilization |
+| `FIELD_KP_PITCH` | `0.8` | Phase-correction gain for pitch error (rad/s per rad) |
+| `FIELD_KP_ROLL` | `0.8` | Phase-correction gain for roll error (rad/s per rad) |
+| `FIELD_KB_PITCH` | `0.2` | Bias-correction gain for pitch error (bias-units/s per rad) |
+| `FIELD_KB_ROLL` | `0.2` | Bias-correction gain for roll error (bias-units/s per rad) |
+| `FIELD_KI_ALT` | `0.1` | Intensity-correction gain for altitude error (%/s per metre) |
 
 ### Field mode in simulation vs hardware
 
@@ -273,7 +279,38 @@ FIELD_PHASE_VELOCITY=3.14159265358979   # 1 rotation / 2 s
 FIELD_SPIN=1                            # clockwise
 FIELD_OUTPUT_SCALE=0.8                  # limit to 80 % power during testing
 FC_HARDWARE_MODE=sim                    # or mavlink for SITL
+
+# Field stabilization (optional — requires FIELD_MODE_ENABLED=true)
+FIELD_STABILIZATION_ENABLED=true
+FIELD_KP_PITCH=0.8
+FIELD_KP_ROLL=0.8
+FIELD_KB_PITCH=0.2
+FIELD_KB_ROLL=0.2
+FIELD_KI_ALT=0.1
 ```
+
+### Field stabilization
+
+When `FIELD_STABILIZATION_ENABLED=true`, the `applyFieldStabilization()` function
+runs every field-loop tick **before** the field solver.  It reads the IMU via the
+sensor link and injects corrections into the FieldState:
+
+| Channel | Mechanism | Purpose |
+|---|---|---|
+| `phase` | `phase += (pitch_err × Kp_pitch + roll_err × Kp_roll) × dt × α` | Primary attitude correction — shifts the field force vector |
+| `bias` | `bias += (roll_err × Kb_roll + pitch_err × Kb_pitch) × dt × α` | Secondary drift correction — adjusts collective baseline |
+| `intensity` | `intensity += alt_err × Ki_alt × dt × α` | Altitude hold — only active when a target altitude is set |
+
+`α = 0.3` is the per-tick smoothing factor that prevents correction spikes.
+All outputs are clamped/wrapped: `phase ∈ [0, 2π)`, `bias ∈ [−1, 1]`,
+`intensity ∈ [10, 100]`.
+
+**Safety rules:**
+- If IMU data is invalid (`valid = false`) the stabilizer returns the input
+  FieldState unchanged — the field loop continues without correction.
+- In hardware (MAVLink) mode no sensor link is wired in yet; `valid` stays
+  `false` and stabilization is transparently bypassed until hardware IMU
+  integration is added.
 
 ### Field-solver tests
 

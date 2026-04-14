@@ -468,6 +468,9 @@ importers:
       '@future-craft/schemas':
         specifier: workspace:*
         version: link:../../packages/schemas
+      '@future-craft/sensor-link':
+        specifier: workspace:*
+        version: link:../../drivers/sensor-link
       pino:
         specifier: ^9.1.0
         version: 9.14.0
