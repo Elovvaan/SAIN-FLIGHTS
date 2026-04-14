@@ -114,6 +114,13 @@ export function applyFieldStabilization(
   // vector to oppose the observed tilt — stabilization without touching motor
   // outputs.  Scaling by dt converts the gains from rad/s to per-tick deltas,
   // and CORRECTION_SMOOTHING limits per-frame magnitude to suppress oscillation.
+  //
+  // The pitch and roll contributions are combined additively.  This is valid
+  // for the 4-node geometry (motors at 0°/90°/180°/270°) because the phase
+  // offset between adjacent motors is exactly 90°, meaning pitch and roll
+  // corrections are orthogonal in phase space — they do not cross-couple when
+  // summed, and the combined phase shift correctly maps to the 2-D orientation
+  // error vector.
 
   const phaseCorrection =
     (pitchError * stabConfig.kpPitch + rollError * stabConfig.kpRoll) *
@@ -126,6 +133,8 @@ export function applyFieldStabilization(
   //
   // The bias shifts the adjusted collective base, nudging the vehicle back
   // toward level flight without changing the differential phase pattern.
+  // Roll and pitch are summed additively; for the symmetric 4-node layout
+  // each axis contributes independently to the scalar collective offset.
 
   const biasCorrection =
     (rollError * stabConfig.kbRoll + pitchError * stabConfig.kbPitch) *

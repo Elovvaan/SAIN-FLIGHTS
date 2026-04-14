@@ -91,8 +91,9 @@ function startFieldLoop(): void {
           const imu = await sensorLink.readImu();
           const alt = await sensorLink.readAltitudeM();
           imuState = { ...imu, altitude: alt, valid: true };
-        } catch {
+        } catch (err) {
           imuState = { ...imuState, valid: false };
+          logger.debug({ err }, 'field loop: IMU read failed — stabilization bypassed this tick');
         }
       }
 
