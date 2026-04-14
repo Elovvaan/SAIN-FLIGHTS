@@ -70,7 +70,11 @@ export function computeRampedIntensity(
   nowMs: number,
   config: RampConfig,
 ): number {
-  const { minIntensity, targetIntensity, rampDurationMs } = config;
+  const {
+    minIntensity,
+    targetIntensity,
+    rampDurationMs,
+  } = normalizeRampConfig(config);
 
   // Immediately return target for degenerate duration.
   if (rampDurationMs <= 0) {
@@ -100,6 +104,18 @@ export function isRampComplete(
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function normalizeRampConfig(config: RampConfig): RampConfig {
+  if (config.minIntensity <= config.targetIntensity) {
+    return config;
+  }
+
+  return {
+    minIntensity: config.targetIntensity,
+    targetIntensity: config.minIntensity,
+    rampDurationMs: config.rampDurationMs,
+  };
+}
 
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
