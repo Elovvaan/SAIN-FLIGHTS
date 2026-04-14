@@ -75,7 +75,7 @@ sleep 3
 echo ""
 echo "[verify] Step 3: Running sim-harness (full flight sequence)..."
 
-HARNESS_LOG=$(mktemp /tmp/harness-verify-XXXXXX.log)
+HARNESS_LOG=$(mktemp /tmp/harness-verify.XXXXXX)
 set +e
 npx tsx apps/sim-harness/src/index.ts 2>&1 | tee "$HARNESS_LOG"
 HARNESS_EXIT=${PIPESTATUS[0]}
