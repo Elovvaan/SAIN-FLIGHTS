@@ -1,13 +1,18 @@
 import pino from 'pino';
 import { config } from '@future-craft/config';
 import { connectBus, publish, subscribe, TOPICS } from '@future-craft/message-bus';
-import { SimFlightControllerLink } from '@future-craft/flight-controller-link';
+import { createFlightControllerLink } from '@future-craft/flight-controller-link';
 import {
   MotionPlan, StateChangedEvent, PropulsionHealth,
 } from '@future-craft/schemas';
 
 const logger = pino({ name: 'propulsion-controller', level: config.LOG_LEVEL });
-const flightCtrl = new SimFlightControllerLink();
+const flightCtrl = createFlightControllerLink(
+  config.FC_HARDWARE_MODE,
+  config.FC_MAVLINK_HOST,
+  config.FC_MAVLINK_PORT,
+  config.FC_MAVLINK_TARGET_SYS,
+);
 
 function publishHealth(healthy: boolean): void {
   const health: PropulsionHealth = {
