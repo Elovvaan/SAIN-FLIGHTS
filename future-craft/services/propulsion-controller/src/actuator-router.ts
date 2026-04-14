@@ -172,24 +172,34 @@ export function validatePassthroughConditions(
 
 // ── Core routing function ─────────────────────────────────────────────────────
 
+/** Identity channel map — motor index equals physical channel index. */
+const IDENTITY_CHANNEL_MAP: MotorChannelMap = { A: 0, B: 1, C: 2, D: 3 };
+
 /**
  * Route solved [A, B, C, D] motor outputs to physical channels.
+ *
+ * Behaviour differs by `outputMode`:
+ *
+ *   passthrough — applies the full configured channel map, inversion, scale,
+ *                 and clamping.  The physical array slot for each motor is
+ *                 determined by `routerConfig.channelMap[motor]`.  This is the
+ *                 REQUIRED mode for true per-motor field-vehicle execution.
+ *
+ *   mixer       — the FC's own mixer matrix handles routing after delivery, so
+ *                 applying a custom channel map here would double-remap the
+ *                 outputs.  In this mode the function enforces the identity
+ *                 channel map (A→0, B→1, C→2, D→3) regardless of the configured
+ *                 `channelMap`.  Scale, inversion, and clamping are still applied.
+ *                 The returned `channelMap` reflects the identity map actually used.
  *
  * Applied in order for each motor:
  *   1. Scale  — multiply by `outputScale`
  *   2. Invert — apply `(1 − v)` when the motor inversion flag is set
  *   3. Clamp  — clamp to [0, 1] (NaN-safe)
- *   4. Remap  — place the result in the configured physical channel slot
+ *   4. Remap  — place the result in the effective physical channel slot
  *
- * In `mixer` mode the function still applies scale/inversion/clamping but
- * leaves channel remap as identity (0→0, 1→1, 2→2, 3→3) unless the channel
- * map was explicitly changed.  The physical array order is always determined
- * by the channel map regardless of mode.
- *
- * @param solved        4-tuple from solveField() × FIELD_OUTPUT_SCALE, each
- *                      already expected in [0, 1] before the router applies
- *                      its own outputScale.  In practice callers pass the raw
- *                      solveField() results and set outputScale via config.
+ * @param solved        4-tuple from solveField(), each expected in [0, 1]
+ *                      before the router applies its own `outputScale`.
  * @param routerConfig  Channel map, inversion flags, scale, and output mode.
  * @returns             RoutedActuatorOutputs with the physical channel array
  *                      and full diagnostic information.
@@ -201,9 +211,16 @@ export function routeActuatorOutputs(
   const labels: MotorLabel[] = ['A', 'B', 'C', 'D'];
   const physical: [number, number, number, number] = [0, 0, 0, 0];
 
+  // In mixer mode the FC handles channel routing; use identity to avoid
+  // double-remapping.  In passthrough mode use the operator-configured map.
+  const effectiveChannelMap: MotorChannelMap =
+    routerConfig.outputMode === 'passthrough'
+      ? routerConfig.channelMap
+      : IDENTITY_CHANNEL_MAP;
+
   for (let i = 0; i < 4; i++) {
     const label = labels[i];
-    const channel = routerConfig.channelMap[label];
+    const channel = effectiveChannelMap[label];
 
     // Apply scale then inversion.
     let value = solved[i] * routerConfig.outputScale;
@@ -219,7 +236,8 @@ export function routeActuatorOutputs(
 
   return {
     physical,
-    channelMap: { ...routerConfig.channelMap },
+    // Return the effective map so logs accurately reflect what was applied.
+    channelMap: { ...effectiveChannelMap },
     inversionMap: { ...routerConfig.inversionMap },
     solved: [solved[0], solved[1], solved[2], solved[3]],
   };

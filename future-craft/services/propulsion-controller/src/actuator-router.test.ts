@@ -77,7 +77,7 @@ describe('actuator-router: routeActuatorOutputs', () => {
 
   // ── Channel remapping ─────────────────────────────────────────────────────────
 
-  describe('channel remapping', () => {
+  describe('channel remapping (passthrough mode)', () => {
     it('routes motor A output to a non-default physical channel', () => {
       // Motor A → channel 2; A value should appear at physical[2]
       const solved: [number, number, number, number] = [0.8, 0, 0, 0];
@@ -105,6 +105,69 @@ describe('actuator-router: routeActuatorOutputs', () => {
       assert.strictEqual(result.physical[2], 0.2); // B → ch2
       assert.strictEqual(result.physical[1], 0.3); // C → ch1
       assert.strictEqual(result.physical[0], 0.4); // D → ch0
+    });
+  });
+
+  // ── Mixer mode routing ────────────────────────────────────────────────────────
+
+  describe('mixer mode: enforces identity channel map', () => {
+    it('ignores non-identity channelMap in mixer mode — output is always identity-mapped', () => {
+      // Even with a swapped channel map, mixer mode must produce identity output
+      // so the FC mixer receives values in software motor order (A=ch0, B=ch1, etc.)
+      const solved: [number, number, number, number] = [0.1, 0.2, 0.3, 0.4];
+      const cfg = makeConfig({ outputMode: 'mixer', channelMap: { A: 1, B: 0, C: 3, D: 2 } });
+      const result = routeActuatorOutputs(solved, cfg);
+      assert.strictEqual(result.physical[0], 0.1); // A → ch0 (identity)
+      assert.strictEqual(result.physical[1], 0.2); // B → ch1 (identity)
+      assert.strictEqual(result.physical[2], 0.3); // C → ch2 (identity)
+      assert.strictEqual(result.physical[3], 0.4); // D → ch3 (identity)
+    });
+
+    it('mixer mode with identity channelMap produces same output as passthrough mode', () => {
+      const solved: [number, number, number, number] = [0.2, 0.4, 0.6, 0.8];
+      const mixer = makeConfig({ outputMode: 'mixer', channelMap: identityMap() });
+      const passthrough = makeConfig({ outputMode: 'passthrough', channelMap: identityMap() });
+      const mixerResult = routeActuatorOutputs(solved, mixer);
+      const passthroughResult = routeActuatorOutputs(solved, passthrough);
+      assert.deepStrictEqual(mixerResult.physical, passthroughResult.physical);
+    });
+
+    it('mixer mode result.channelMap reflects identity map (not the configured map)', () => {
+      const cfg = makeConfig({ outputMode: 'mixer', channelMap: { A: 3, B: 2, C: 1, D: 0 } });
+      const result = routeActuatorOutputs([0.5, 0.5, 0.5, 0.5], cfg);
+      assert.deepStrictEqual(result.channelMap, { A: 0, B: 1, C: 2, D: 3 });
+    });
+
+    it('mixer mode still applies scale', () => {
+      const solved: [number, number, number, number] = [0.5, 0.5, 0.5, 0.5];
+      const cfg = makeConfig({ outputMode: 'mixer', outputScale: 0.8 });
+      const result = routeActuatorOutputs(solved, cfg);
+      for (const v of result.physical) {
+        assert.ok(Math.abs(v - 0.4) < 1e-9, `expected 0.4, got ${v}`);
+      }
+    });
+
+    it('mixer mode still applies inversion', () => {
+      const solved: [number, number, number, number] = [0.3, 0, 0, 0];
+      const cfg = makeConfig({
+        outputMode: 'mixer',
+        inversionMap: { A: true, B: false, C: false, D: false },
+        channelMap: { A: 3, B: 2, C: 1, D: 0 }, // remapping must be ignored
+      });
+      const result = routeActuatorOutputs(solved, cfg);
+      // A is at identity ch0 (not ch3), inverted: 1 - 0.3 = 0.7
+      assert.ok(Math.abs(result.physical[0] - 0.7) < 1e-9,
+        `expected 0.7 at ch0, got ${result.physical[0]}`);
+    });
+
+    it('mixer mode still clamps outputs to [0, 1]', () => {
+      const solved: [number, number, number, number] = [1.5, -0.5, Number.NaN, 0.5];
+      const cfg = makeConfig({ outputMode: 'mixer' });
+      const result = routeActuatorOutputs(solved, cfg);
+      assert.strictEqual(result.physical[0], 1);
+      assert.strictEqual(result.physical[1], 0);
+      assert.strictEqual(result.physical[2], 0);
+      assert.ok(Math.abs(result.physical[3] - 0.5) < 1e-9);
     });
   });
 

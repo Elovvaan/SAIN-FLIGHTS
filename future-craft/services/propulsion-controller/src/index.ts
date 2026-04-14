@@ -277,6 +277,36 @@ async function main(): Promise<void> {
 
   subscribe<StateChangedEvent>(TOPICS.STATE_CHANGED, async (event) => {
     if (event.to === 'ARMED_READY') {
+      // ── Mixer-mode hardware arming guard ────────────────────────────────────
+      // FC_OUTPUT_MODE=mixer on real hardware with field mode active is NOT a
+      // valid configuration for true per-motor field execution: the FC mixer
+      // matrix reorders outputs and does not preserve the [A,B,C,D] software
+      // motor ordering.  Block arming and require the operator to either
+      // switch to FC_OUTPUT_MODE=passthrough (with the FC configured for
+      // passthrough) or disable FIELD_MODE_ENABLED.
+      if (
+        config.FC_HARDWARE_MODE === 'mavlink' &&
+        config.FIELD_MODE_ENABLED &&
+        routerConfig.outputMode === 'mixer'
+      ) {
+        logger.error(
+          {
+            type: 'mixer_field_mode_arm_blocked',
+            FC_HARDWARE_MODE: config.FC_HARDWARE_MODE,
+            FIELD_MODE_ENABLED: config.FIELD_MODE_ENABLED,
+            FC_OUTPUT_MODE: routerConfig.outputMode,
+          },
+          [
+            '⛔ ARMING BLOCKED — FC_OUTPUT_MODE=mixer is NOT valid for field-mode execution on real hardware.',
+            '  The FC mixer matrix will reorder actuator outputs and break the [A,B,C,D] motor routing.',
+            '  To arm, either:',
+            '    (a) Set FC_OUTPUT_MODE=passthrough and configure the FC for passthrough (ArduPilot: SERVO_PASS_THRU; PX4: actuator direct mode), or',
+            '    (b) Set FIELD_MODE_ENABLED=false to use standard avgLift mode (which is compatible with the FC mixer).',
+          ].join('\n'),
+        );
+        return; // do not arm
+      }
+
       // ── Passthrough failsafe guard ─────────────────────────────────────────
       // When FC_OUTPUT_MODE=passthrough, validate all hard conditions before
       // arming.  If any are not satisfied, refuse to arm and emit a hard error.
