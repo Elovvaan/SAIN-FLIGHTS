@@ -12,6 +12,13 @@ import { applyFieldStabilization } from './field-stabilizer';
 import type { ImuState, StabilizerConfig } from './field-stabilizer';
 import { translateField } from './field-translator';
 import type { TranslatorConfig } from './field-translator';
+import {
+  routeActuatorOutputs,
+  validatePassthroughConditions,
+  buildActuatorRouteLog,
+} from './actuator-router';
+import type { ActuatorRouterConfig } from './actuator-router';
+import { emitStartupBanner } from './startup-banner';
 
 const logger = pino({ name: 'propulsion-controller', level: config.LOG_LEVEL });
 const flightCtrl = createFlightControllerLink(
@@ -41,6 +48,26 @@ const stabConfig: StabilizerConfig = {
   kbPitch: config.FIELD_KB_PITCH,
   kbRoll: config.FIELD_KB_ROLL,
   kiAlt: config.FIELD_KI_ALT,
+};
+
+// ── Execution-layer router config ─────────────────────────────────────────────
+
+const routerConfig: ActuatorRouterConfig = {
+  outputMode: config.FC_OUTPUT_MODE,
+  channelMap: {
+    A: config.MOTOR_A_CHANNEL,
+    B: config.MOTOR_B_CHANNEL,
+    C: config.MOTOR_C_CHANNEL,
+    D: config.MOTOR_D_CHANNEL,
+  },
+  inversionMap: {
+    A: config.MOTOR_A_INVERTED,
+    B: config.MOTOR_B_INVERTED,
+    C: config.MOTOR_C_INVERTED,
+    D: config.MOTOR_D_INVERTED,
+  },
+  // Router applies its own scale; the field loop no longer multiplies inline.
+  outputScale: config.FIELD_OUTPUT_SCALE,
 };
 
 /** Translator gain / enable config derived from environment variables. */
@@ -124,10 +151,13 @@ function startFieldLoop(): void {
       fieldState = advancePhase(fieldState, dtSeconds);
 
       // ── Solve field and route to actuators ──────────────────────────────────
-      const outputs = solveField(fieldState).map(
-        (v) => v * config.FIELD_OUTPUT_SCALE,
-      ) as [number, number, number, number];
-      await flightCtrl.setActuatorOutputs(outputs);
+      const solved = solveField(fieldState) as [number, number, number, number];
+      const routed = routeActuatorOutputs(solved, routerConfig);
+      logger.debug(
+        buildActuatorRouteLog(routed, routerConfig.outputMode),
+        'propulsion-controller: actuator route',
+      );
+      await flightCtrl.setActuatorOutputs(routed.physical);
     } catch (err) {
       logger.warn({ err }, 'field loop: setActuatorOutputs failed');
     } finally {
@@ -227,6 +257,19 @@ async function main(): Promise<void> {
     await sensorLink.connect();
   }
   await connectBus();
+
+  // ── Emit startup verification banner ───────────────────────────────────────
+  emitStartupBanner(
+    {
+      fieldModeEnabled: config.FIELD_MODE_ENABLED,
+      stabilizationEnabled: config.FIELD_STABILIZATION_ENABLED,
+      translationEnabled: config.FIELD_TRANSLATION_ENABLED,
+      hardwareMode: config.FC_HARDWARE_MODE,
+      routerConfig,
+    },
+    logger,
+  );
+
   logger.info(
     { fieldModeEnabled: config.FIELD_MODE_ENABLED, stabilizationEnabled: config.FIELD_STABILIZATION_ENABLED },
     'propulsion-controller started',
@@ -234,6 +277,62 @@ async function main(): Promise<void> {
 
   subscribe<StateChangedEvent>(TOPICS.STATE_CHANGED, async (event) => {
     if (event.to === 'ARMED_READY') {
+      // ── Mixer-mode hardware arming guard ────────────────────────────────────
+      // FC_OUTPUT_MODE=mixer on real hardware with field mode active is NOT a
+      // valid configuration for true per-motor field execution: the FC mixer
+      // matrix reorders outputs and does not preserve the [A,B,C,D] software
+      // motor ordering.  Block arming and require the operator to either
+      // switch to FC_OUTPUT_MODE=passthrough (with the FC configured for
+      // passthrough) or disable FIELD_MODE_ENABLED.
+      if (
+        config.FC_HARDWARE_MODE === 'mavlink' &&
+        config.FIELD_MODE_ENABLED &&
+        routerConfig.outputMode === 'mixer'
+      ) {
+        logger.error(
+          {
+            type: 'mixer_field_mode_arm_blocked',
+            FC_HARDWARE_MODE: config.FC_HARDWARE_MODE,
+            FIELD_MODE_ENABLED: config.FIELD_MODE_ENABLED,
+            FC_OUTPUT_MODE: routerConfig.outputMode,
+          },
+          [
+            '⛔ ARMING BLOCKED — FC_OUTPUT_MODE=mixer is NOT valid for field-mode execution on real hardware.',
+            '  The FC mixer matrix will reorder actuator outputs and break the [A,B,C,D] motor routing.',
+            '  To arm, either:',
+            '    (a) Set FC_OUTPUT_MODE=passthrough and configure the FC for passthrough (ArduPilot: SERVO_PASS_THRU; PX4: actuator direct mode), or',
+            '    (b) Set FIELD_MODE_ENABLED=false to use standard avgLift mode (which is compatible with the FC mixer).',
+          ].join('\n'),
+        );
+        return; // do not arm
+      }
+
+      // ── Passthrough failsafe guard ─────────────────────────────────────────
+      // When FC_OUTPUT_MODE=passthrough, validate all hard conditions before
+      // arming.  If any are not satisfied, refuse to arm and emit a hard error.
+      if (routerConfig.outputMode === 'passthrough') {
+        const guard = validatePassthroughConditions(
+          routerConfig,
+          config.FIELD_MODE_ENABLED,
+          config.FC_HARDWARE_MODE,
+        );
+        if (!guard.valid) {
+          logger.error(
+            {
+              type: 'passthrough_arm_blocked',
+              errors: guard.errors,
+              warnings: guard.warnings,
+            },
+            [
+              '⛔ ARMING BLOCKED — FC_OUTPUT_MODE=passthrough but required conditions are not satisfied:',
+              ...guard.errors.map((e) => `  • ${e}`),
+              'Resolve the above errors before attempting to arm.',
+            ].join('\n'),
+          );
+          return; // do not arm
+        }
+      }
+
       // Reset field phase on each arm cycle.
       fieldState = { ...fieldState, phase: 0 };
       await flightCtrl.arm();

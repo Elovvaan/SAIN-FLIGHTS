@@ -57,6 +57,44 @@ const ConfigSchema = z.object({
   FIELD_TRANSLATION_GAIN: z.coerce.number().default(0.4),
   // Gain applied to the lateral bias assist (bias-units per unit velocity per second).
   FIELD_BIAS_GAIN: z.coerce.number().default(0.1),
+  // ── Execution-layer output mode ───────────────────────────────────────────
+  // mixer      = existing FC-guided path (SET_ACTUATOR_CONTROL_TARGET routed
+  //              through the FC mixer matrix before reaching ESCs).
+  //              Compatible with standard GUIDED mode.  NOT guaranteed to
+  //              preserve the [A,B,C,D] software motor ordering.
+  // passthrough = direct actuator routing: software outputs are mapped 1-to-1
+  //              to physical channels before transmission.  Requires the FC to
+  //              be configured for passthrough (ArduPilot: SERVO_PASS_THRU or
+  //              custom motor matrix; PX4: actuator direct mode).
+  FC_OUTPUT_MODE: z.enum(['mixer', 'passthrough']).default('mixer'),
+  // ── Motor channel map ─────────────────────────────────────────────────────
+  // Physical ESC/PWM channel index (0-based) for each logical motor.
+  // Default: straight-through (A→0, B→1, C→2, D→3).
+  // Override when the airframe wires motors in a different order, e.g.:
+  //   MOTOR_A_CHANNEL=2   if the front-right ESC is wired to channel 2.
+  MOTOR_A_CHANNEL: z.coerce.number().int().min(0).max(3).default(0),
+  MOTOR_B_CHANNEL: z.coerce.number().int().min(0).max(3).default(1),
+  MOTOR_C_CHANNEL: z.coerce.number().int().min(0).max(3).default(2),
+  MOTOR_D_CHANNEL: z.coerce.number().int().min(0).max(3).default(3),
+  // ── Motor inversion flags ─────────────────────────────────────────────────
+  // Set to 'true' or '1' when an ESC expects a reversed throttle signal for
+  // that motor (value → 1 − value before transmission).
+  MOTOR_A_INVERTED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  MOTOR_B_INVERTED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  MOTOR_C_INVERTED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  MOTOR_D_INVERTED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
