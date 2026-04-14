@@ -7,6 +7,11 @@ const ConfigSchema = z.object({
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
   VEHICLE_ID: z.string().default('sain-001'),
   PERCEPTION_HTTP_PORT: z.coerce.number().default(8010),
+  // Hardware mode — 'sim' keeps simulation adapters; 'mavlink' uses real flight controller
+  FC_HARDWARE_MODE: z.enum(['sim', 'mavlink']).default('sim'),
+  FC_MAVLINK_HOST: z.string().default('127.0.0.1'),
+  FC_MAVLINK_PORT: z.coerce.number().default(14550),
+  FC_MAVLINK_TARGET_SYS: z.coerce.number().default(1),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

@@ -105,6 +105,101 @@ future-craft/
     └── field-zone-fw
 ```
 
+## Hardware Mode — Real Flight Controller Binding
+
+`flight-controller-link` ships two implementations that satisfy the same
+`FlightControllerLink` interface.  The active implementation is selected at
+startup by the `FC_HARDWARE_MODE` environment variable so **no other service
+needs to change** — state-engine, safety-supervisor, and telemetry-logger
+continue operating identically.
+
+### Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `FC_HARDWARE_MODE` | `sim` | `sim` = simulation adapter; `mavlink` = real hardware |
+| `FC_MAVLINK_HOST` | `127.0.0.1` | UDP host of the flight controller |
+| `FC_MAVLINK_PORT` | `14550` | UDP port of the flight controller |
+| `FC_MAVLINK_TARGET_SYS` | `1` | MAVLink system ID of the flight controller |
+
+### MAVLink command mapping
+
+| `setThrottle` call (avgLift) | MAVLink command sent |
+|---|---|
+| avgLift ≥ 65 (ASCEND) | `MAV_CMD_NAV_TAKEOFF` (param7 = altitude m) |
+| 45 ≤ avgLift < 65 (HOVER/HOLD) | `MAV_CMD_DO_SET_MODE` → LOITER |
+| avgLift < 45 (DESCEND) | `MAV_CMD_NAV_LAND` |
+| `arm()` | `MAV_CMD_DO_SET_MODE` GUIDED + `MAV_CMD_COMPONENT_ARM_DISARM` param1=1 |
+| `disarm()` | `MAV_CMD_COMPONENT_ARM_DISARM` param1=0 |
+
+### Setup instructions for real hardware mode
+
+#### Option A — ArduPilot SITL (software-in-the-loop test)
+
+```bash
+# 1. Install ArduPilot SITL
+pip install dronekit-sitl
+
+# 2. Start ArduCopter SITL (binds UDP on 127.0.0.1:14550 by default)
+dronekit-sitl copter
+
+# 3. (Optional) attach MAVProxy for monitoring in a second terminal
+mavproxy.py --master=udp:127.0.0.1:14550 --console
+
+# 4. Enable hardware mode — add to your .env
+FC_HARDWARE_MODE=mavlink
+FC_MAVLINK_HOST=127.0.0.1
+FC_MAVLINK_PORT=14550
+FC_MAVLINK_TARGET_SYS=1
+
+# 5. Start core services as normal
+pnpm dev:core
+```
+
+#### Option B — Real ArduPilot/PX4 hardware over USB serial bridge
+
+```bash
+# 1. Attach flight controller via USB; identify the serial port
+ls /dev/ttyUSB* /dev/ttyACM*   # Linux
+ls /dev/cu.usbmodem*            # macOS
+
+# 2. Start MAVProxy as a UDP bridge
+mavproxy.py --master=/dev/ttyUSB0 --baudrate 57600 \
+            --out=udp:127.0.0.1:14550 --console
+
+# 3. Enable hardware mode in .env
+FC_HARDWARE_MODE=mavlink
+FC_MAVLINK_HOST=127.0.0.1
+FC_MAVLINK_PORT=14550
+FC_MAVLINK_TARGET_SYS=1
+
+# 4. Start core services
+pnpm dev:core
+```
+
+### Verification steps
+
+After starting in hardware mode run the simulation sequence and verify:
+
+```bash
+# Terminal 1 — run the full simulation command sequence
+pnpm dev:sim
+
+# Terminal 2 — watch propulsion-controller logs for MAVLink commands
+# Expected sequence:
+#   MavlinkFlightControllerLink: connected — heartbeat running
+#   MavlinkFlightControllerLink: ARM sent (GUIDED mode + arm command)
+#   MavlinkFlightControllerLink: TAKEOFF command sent
+#   MavlinkFlightControllerLink: LOITER (hold) mode sent
+#   MavlinkFlightControllerLink: LAND command sent
+#   MavlinkFlightControllerLink: DISARM sent
+```
+
+To revert to simulation mode at any time set `FC_HARDWARE_MODE=sim` (or remove
+the variable entirely — it defaults to `sim`).
+
+---
+
 ## Tech Stack
 
 - **TypeScript** + **tsx** for all Node.js services
