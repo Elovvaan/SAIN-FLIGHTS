@@ -39,6 +39,10 @@ async function main() {
   });
   console.log(`[${SERVICE}] Connected to NATS`);
   console.log(`[${SERVICE}] Telemetry DB: ${dbPath}`);
+  nc.publish(
+    TOPICS.SERVICE_READY,
+    new TextEncoder().encode(JSON.stringify({ service: SERVICE, readyAt: now() })),
+  );
   console.log(`[${SERVICE}] SERVICE_READY`);
 
   const watchedTopics = [
