@@ -198,13 +198,14 @@ function startFieldLoop(): void {
         // Lock translation.
         fieldState = { ...fieldState, velocityX: 0, velocityY: 0 };
 
-        // Apply ramp-based intensity when RAMPING.
-        if (fsm.phase === 'RAMPING' && rampStartMs !== null) {
+        // Continue ramp progression once started, even if another event moves the
+        // FSM out of RAMPING before the duration elapses.
+        if (rampStartMs !== null) {
           const ramped = computeRampedIntensity(rampStartMs, now, rampConfig);
           fieldState = { ...fieldState, intensity: ramped };
 
           // Advance FSM when ramp completes.
-          if (isRampComplete(rampStartMs, now, rampConfig)) {
+          if (isRampComplete(rampStartMs, now, rampConfig) && fsm.phase !== 'STABILIZING') {
             const ok = fsm.requestTransition('STABILIZING', 'ramp_complete');
             if (ok) {
               logger.info(
