@@ -45,6 +45,18 @@ const ConfigSchema = z.object({
   FIELD_KB_ROLL: z.coerce.number().default(0.2),
   // Intensity-correction gain for altitude error (%/s per metre).
   FIELD_KI_ALT: z.coerce.number().default(0.1),
+  // ── Field translation (velocity-driven directional movement) ─────────────
+  // When true, translateField() is called every field-loop tick after
+  // stabilization, shifting the field center to produce directional movement
+  // WITHOUT tilting the craft.
+  FIELD_TRANSLATION_ENABLED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  // Gain applied to the translation phase offset (phase radians per unit velocity per second).
+  FIELD_TRANSLATION_GAIN: z.coerce.number().default(0.4),
+  // Gain applied to the lateral bias assist (bias-units per unit velocity per second).
+  FIELD_BIAS_GAIN: z.coerce.number().default(0.1),
   // ── Execution-layer output mode ───────────────────────────────────────────
   // mixer      = existing FC-guided path (SET_ACTUATOR_CONTROL_TARGET routed
   //              through the FC mixer matrix before reaching ESCs).

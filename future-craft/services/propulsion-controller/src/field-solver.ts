@@ -60,6 +60,18 @@ export type FieldState = {
    * (field modulation is bypassed — equivalent to avgLift mode).
    */
   enabled: boolean;
+  /**
+   * Lateral translation velocity in the X axis, normalised −1 to +1.
+   * Used by the field translator to shift the field center; does NOT tilt
+   * the craft.  Defaults to 0 when absent.
+   */
+  velocityX?: number;
+  /**
+   * Lateral translation velocity in the Y axis, normalised −1 to +1.
+   * Used by the field translator to shift the field center; does NOT tilt
+   * the craft.  Defaults to 0 when absent.
+   */
+  velocityY?: number;
 };
 
 // ── Public API ────────────────────────────────────────────────────────────────
