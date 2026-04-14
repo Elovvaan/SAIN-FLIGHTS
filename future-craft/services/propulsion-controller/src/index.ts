@@ -287,7 +287,7 @@ function startFieldLoop(): void {
         }
 
         // ── Lift detection ────────────────────────────────────────────────────
-        if (fsm.phase === 'RAMPING' || fsm.phase === 'ARMED') {
+        if (fsm.phase === 'RAMPING') {
           const liftResult = detectLift(
             imuState,
             prevImuState,
