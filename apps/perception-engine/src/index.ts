@@ -14,16 +14,17 @@ const SCENE_UPDATES = [
 ];
 
 async function main() {
+  console.log(`[${SERVICE}] SERVICE_STARTING`);
   console.log(`[${SERVICE}] Connecting to NATS at ${NATS_URL}...`);
   const nc = await connect({
     servers: NATS_URL,
-    reconnect: true,
-    maxReconnectAttempts: -1,
-    waitOnFirstConnect: true,
+    reconnect: false,
   });
   console.log(`[${SERVICE}] Connected to NATS`);
 
   nc.publish(TOPICS.SERVICE_READY, encode({ service: SERVICE, timestamp: now() }));
+  console.log(`[${SERVICE}] SERVICE_READY`);
+  console.log(`[${SERVICE}] SERVICE_SUBSCRIPTIONS_READY`);
 
   let sceneIndex = 0;
 

@@ -19,22 +19,23 @@ const STATE_ACTIONS: Record<string, string> = {
 };
 
 async function main() {
+  console.log(`[${SERVICE}] SERVICE_STARTING`);
   console.log(`[${SERVICE}] Connecting to NATS at ${NATS_URL}...`);
   const nc = await connect({
     servers: NATS_URL,
-    reconnect: true,
-    maxReconnectAttempts: -1,
-    waitOnFirstConnect: true,
+    reconnect: false,
   });
   console.log(`[${SERVICE}] Connected to NATS`);
 
   nc.publish(TOPICS.SERVICE_READY, encode({ service: SERVICE, timestamp: now() }));
+  console.log(`[${SERVICE}] SERVICE_READY`);
 
   const stateSub = nc.subscribe(TOPICS.STATE_CHANGED);
   console.log(`[${SERVICE}] Subscribed to ${TOPICS.STATE_CHANGED}`);
 
   const sceneSub = nc.subscribe(TOPICS.SCENE_UPDATED);
   console.log(`[${SERVICE}] Subscribed to ${TOPICS.SCENE_UPDATED}`);
+  console.log(`[${SERVICE}] SERVICE_SUBSCRIPTIONS_READY`);
 
   (async () => {
     for await (const msg of stateSub) {

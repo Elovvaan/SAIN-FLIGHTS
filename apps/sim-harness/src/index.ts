@@ -1,4 +1,4 @@
-import { connect, NatsConnection } from 'nats';
+import { connect, NatsConnection, NatsError } from 'nats';
 import {
   TOPICS, NATS_URL, encode, decode, now,
   VehicleState, StateChangedMessage
@@ -32,6 +32,29 @@ async function waitMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Check NATS connectivity with a short timeout. Exits process if unreachable. */
+async function checkNatsReachable(): Promise<void> {
+  const TIMEOUT_MS = 3000;
+  console.log(`[${SERVICE}] Checking NATS connectivity at ${NATS_URL}...`);
+  try {
+    const nc = await Promise.race([
+      connect({ servers: NATS_URL, reconnect: false }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS)
+      ),
+    ]);
+    await nc.close();
+    console.log(`[${SERVICE}] NATS reachable at ${NATS_URL}`);
+  } catch (err) {
+    const msg = err instanceof NatsError ? err.message : String(err);
+    console.error(`\n[${SERVICE}] FATAL: NATS not reachable at ${NATS_URL}`);
+    console.error(`[${SERVICE}] Reason: ${msg}`);
+    console.error(`\nEnsure a NATS server is running and reachable at ${NATS_URL}\n`);
+    process.exit(1);
+  }
+}
+
+
 async function waitForState(nc: NatsConnection, targetState: VehicleState, timeoutMs = 5000): Promise<boolean> {
   return new Promise((resolve) => {
     const sub = nc.subscribe(TOPICS.STATE_CHANGED);
@@ -56,25 +79,36 @@ async function waitForState(nc: NatsConnection, targetState: VehicleState, timeo
 }
 
 async function main() {
+  console.log(`[${SERVICE}] SERVICE_STARTING`);
+
+  // Fail fast if NATS is unavailable
+  await checkNatsReachable();
+
   console.log(`[${SERVICE}] Connecting to NATS at ${NATS_URL}...`);
   const nc = await connect({
     servers: NATS_URL,
-    reconnect: true,
-    maxReconnectAttempts: -1,
-    waitOnFirstConnect: true,
+    reconnect: false,
   });
   console.log(`[${SERVICE}] Connected to NATS`);
+  console.log(`[${SERVICE}] SERVICE_READY`);
 
   console.log(`[${SERVICE}] Waiting for services to be ready...`);
   const readyServices = new Set<string>();
+
+  const SERVICE_WAIT_TIMEOUT_MS = 10000;
 
   await new Promise<void>((resolve) => {
     const readySub = nc.subscribe(TOPICS.SERVICE_READY);
     const timer = setTimeout(() => {
       readySub.unsubscribe();
-      console.log(`[${SERVICE}] Services ready (timeout): ${[...readyServices].join(', ')}`);
+      const missing = REQUIRED_SERVICES.filter((s) => !readyServices.has(s));
+      if (missing.length > 0) {
+        console.warn(`[${SERVICE}] Timeout waiting for services. Still missing: ${missing.join(', ')}`);
+      } else {
+        console.log(`[${SERVICE}] Services ready (timeout fallback): ${[...readyServices].join(', ')}`);
+      }
       resolve();
-    }, 5000);
+    }, SERVICE_WAIT_TIMEOUT_MS);
 
     (async () => {
       for await (const msg of readySub) {
@@ -154,7 +188,7 @@ async function main() {
   console.log('  RUN_CHECKS → ARM → TAKEOFF → HOVER_STABLE → FOLLOW → HOLD_POSITION → FIELD_TEST → LAND');
 
   await nc.drain();
-  process.exit(0);
+  process.exit(currentState === 'LAND' ? 0 : 1);
 }
 
 main().catch((err) => {

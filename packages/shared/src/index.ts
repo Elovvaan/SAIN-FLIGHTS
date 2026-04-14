@@ -85,7 +85,7 @@ export interface ServiceReadyMessage {
   timestamp: string;
 }
 
-export const NATS_URL = process.env.NATS_URL ?? 'nats://localhost:4222';
+export const NATS_URL = process.env.NATS_URL ?? 'nats://127.0.0.1:4222';
 
 export function encode(obj: unknown): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(obj));

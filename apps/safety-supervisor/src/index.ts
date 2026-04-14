@@ -9,19 +9,20 @@ const SERVICE = 'safety-supervisor';
 const UNSAFE_INTENTS: string[] = [];
 
 async function main() {
+  console.log(`[${SERVICE}] SERVICE_STARTING`);
   console.log(`[${SERVICE}] Connecting to NATS at ${NATS_URL}...`);
   const nc = await connect({
     servers: NATS_URL,
-    reconnect: true,
-    maxReconnectAttempts: -1,
-    waitOnFirstConnect: true,
+    reconnect: false,
   });
   console.log(`[${SERVICE}] Connected to NATS`);
 
   nc.publish(TOPICS.SERVICE_READY, encode({ service: SERVICE, timestamp: now() }));
+  console.log(`[${SERVICE}] SERVICE_READY`);
 
   const sub = nc.subscribe(TOPICS.SAFETY_CHECK);
   console.log(`[${SERVICE}] Subscribed to ${TOPICS.SAFETY_CHECK}`);
+  console.log(`[${SERVICE}] SERVICE_SUBSCRIPTIONS_READY`);
 
   for await (const msg of sub) {
     const data = decode<SafetyCheckMessage>(msg.data);

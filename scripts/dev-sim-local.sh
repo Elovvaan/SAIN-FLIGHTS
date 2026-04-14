@@ -4,33 +4,40 @@ set -e
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Force localhost-only NATS URL — no LAN binding, no external callbacks
+# Force localhost-only NATS URL
 export NATS_URL="nats://127.0.0.1:4222"
-
 
 if ! command -v nats-server &> /dev/null; then
   echo ""
-  echo "ERROR: nats-server not found."
-  echo "Install from: https://nats.io/download/"
-  echo "  macOS:  brew install nats-server"
-  echo "  Linux:  https://github.com/nats-io/nats-server/releases"
+  echo "ERROR: nats-server not found on PATH."
+  echo ""
+  echo "Install nats-server first, then run:"
+  echo "  nats-server -a 127.0.0.1 -p 4222"
+  echo ""
+  echo "After nats-server is running, execute:"
+  echo "  pnpm dev:sim:local"
   echo ""
   exit 1
 fi
 
+# ── NATS connectivity check ──────────────────────────────────────────────────
+echo "[boot] Checking NATS on 127.0.0.1:4222..."
+if ! nc -z -w 2 127.0.0.1 4222 2>/dev/null; then
+  echo ""
+  echo "ERROR: NATS not reachable on 127.0.0.1:4222"
+  echo ""
+  echo "Start NATS first:"
+  echo "  nats-server -a 127.0.0.1 -p 4222"
+  echo ""
+  exit 1
+fi
+echo "[boot] NATS reachable."
+
 echo ""
 echo "================================================"
-echo "  SAIN-FLIGHTS Simulation Startup"
-echo "  NATS: ${NATS_URL} (localhost-only)"
+echo "  SAIN-FLIGHTS Local Simulation Startup"
+echo "  NATS: ${NATS_URL}"
 echo "================================================"
-
-pkill -f "nats-server" 2>/dev/null || true
-sleep 0.5
-
-echo "[boot] Starting NATS server on 127.0.0.1:4222..."
-nats-server -a 127.0.0.1 -p 4222 &
-NATS_PID=$!
-sleep 1
 
 echo "[boot] Starting all services..."
 npx concurrently \
@@ -48,15 +55,21 @@ npx concurrently \
   "npx tsx apps/perception-engine/src/index.ts" &
 SERVICES_PID=$!
 
+cleanup() {
+  kill "$SERVICES_PID" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
 echo "[boot] Waiting for services to initialize (3s)..."
 sleep 3
 
 echo "[boot] Running sim-harness..."
+set +e
 npx tsx apps/sim-harness/src/index.ts
 HARNESS_EXIT=$?
+set -e
 
 echo "[boot] Sim-harness complete (exit=$HARNESS_EXIT). Shutting down services..."
-kill $SERVICES_PID 2>/dev/null || true
-kill $NATS_PID 2>/dev/null || true
+cleanup
 
 exit $HARNESS_EXIT
