@@ -1,16 +1,16 @@
 /**
  * Lift Detector — determines whether the craft has left the ground.
  *
- * Uses IMU vertical acceleration to detect a positive lift event.
+ * Uses consecutive IMU attitude snapshots to estimate angular motion from
+ * roll/pitch deltas, plus optional altitude rise when available.
  * No hardware-specific sensors are required beyond the standard IMU state
  * that is already available in the field-stabilizer pipeline.
  *
  * Detection algorithm:
- *   Primary   — vertical acceleration spike:
+ *   Primary   — angular-motion spike:
  *     The magnitude of the combined roll+pitch change between two consecutive
- *     ticks exceeds a threshold, indicating the craft moving vertically.
- *     A sudden reduction in ground-coupled vibration (low roll/pitch delta
- *     combined with a prior high-vibration state) also triggers detection.
+ *     ticks is converted to an estimated angular-rate magnitude. If that
+ *     estimate exceeds a threshold, lift is reported.
  *
  *   Secondary — altitude rise:
  *     When altitude data is available, a rise of ≥ ALT_RISE_THRESHOLD_M above
@@ -37,8 +37,8 @@ export type LiftDetectionResult = {
 /** Thresholds for lift detection. */
 export type LiftDetectorConfig = {
   /**
-   * Minimum angular-rate magnitude (rad/s, estimated from consecutive snapshots)
-   * that indicates a vertical acceleration event.
+   * Minimum angular-rate magnitude (rad/s, estimated from consecutive
+   * roll/pitch snapshots) that indicates sufficient motion to classify as lift.
    * Default: 0.05 rad/s (very small motion indicating leave of ground).
    */
   accelSpikeThresholdRadS: number;
