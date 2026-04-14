@@ -96,9 +96,10 @@ const ConfigSchema = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
   // ── Safe-lift mode ────────────────────────────────────────────────────────
-  // When true, limits intensity to SAFE_LIFT_MAX_INTENSITY, disables
-  // aggressive phase velocity, locks translation (velocityX=0, velocityY=0),
-  // enables stabilization only, and soft-starts thrust via the ramp controller.
+  // When true, limits intensity to SAFE_LIFT_MAX_INTENSITY, locks
+  // translation (velocityX=0, velocityY=0), and soft-starts thrust via the
+  // ramp controller. It does not itself override phase velocity or force
+  // stabilization mode.
   SAFE_LIFT_MODE: z
     .string()
     .default('false')
@@ -110,7 +111,8 @@ const ConfigSchema = z.object({
   // Ramp duration in milliseconds (time to travel from min to max intensity).
   SAFE_LIFT_RAMP_DURATION_MS: z.coerce.number().min(0).default(3000),
   // ── Tethered test mode ────────────────────────────────────────────────────
-  // When true, activates TETHER_MODE which behaves like SAFE_LIFT_MODE but
+  // When true, activates TETHER_MODE, which applies the same intensity cap,
+  // translation lock, and soft-start ramp behavior as SAFE_LIFT_MODE, but
   // additionally requires TETHER_CONFIRM=true before the ramp will start.
   // Every stage is logged: armed / ramp_start / lift_detected / instability.
   TETHER_MODE: z
