@@ -321,6 +321,153 @@ pnpm --filter @future-craft/propulsion-controller test
 
 ---
 
+## Real hardware execution for field-mode vehicles
+
+This section documents the complete execution path from software motor outputs
+`[A, B, C, D]` to physical ESC channels, the required FC configuration, how to
+run a bench test, and the exact arming conditions.
+
+### Hardware-routing design
+
+The **Actuator Router** (`actuator-router.ts`) sits between the field solver and
+the flight controller link.  It is the single source of truth for:
+
+1. **Channel remapping** — maps each logical motor (`A`/`B`/`C`/`D`) to a
+   physical ESC/PWM channel index.
+2. **Motor inversion** — optionally inverts (`v → 1 − v`) motors that require a
+   reversed throttle signal.
+3. **Output scaling** — applies `FIELD_OUTPUT_SCALE` before transmission.
+4. **Clamping** — guarantees all values are in `[0, 1]` (NaN-safe).
+5. **Machine-readable routing log** — every resolved routing operation is logged
+   as a structured JSON record with `outputMode`, `solved`, `channelMap`,
+   `inversionMap`, and `physical` fields.
+
+### Output modes: `mixer` vs `passthrough`
+
+| `FC_OUTPUT_MODE` | What the FC does | Valid for field execution? |
+|---|---|---|
+| `mixer` | Routes `SET_ACTUATOR_CONTROL_TARGET` through the FC's own mixer matrix before driving ESCs. Compatible with standard GUIDED mode. | ⛔ **NOT valid** — FC may reorder or blend motor outputs |
+| `passthrough` | Software outputs are mapped 1-to-1 to the configured physical channels before transmission. Requires explicit FC configuration (see below). | ✅ **VALID** when FC is correctly configured |
+
+### Required FC configuration
+
+#### ArduPilot
+To bypass the default quad mixer, one of the following must be true:
+- `SERVO_PASS_THRU` is set to include all motor output channels, **or**
+- A **custom motor matrix** is loaded that maps `group-0 controls[0..3]` directly
+  to motor outputs `[A, B, C, D]` in the same order as the software channel map.
+
+Without this, `SET_ACTUATOR_CONTROL_TARGET` in GUIDED mode will still pass through
+the ArduCopter mixer — **which constitutes FC remixing and is NOT valid for
+field-vehicle flight**.
+
+#### PX4
+Actuator direct mode must be active so that the `SET_ACTUATOR_CONTROL_TARGET`
+payload reaches the ESCs without further mixing.
+
+> **⚠ This software cannot auto-detect FC mixer state.**  The startup banner will
+> emit a `WARN` advisory when `FC_HARDWARE_MODE=mavlink` reminding the operator
+> to verify manually.
+
+### Motor mapping procedure
+
+1. Set `FC_OUTPUT_MODE=passthrough` and `FIELD_MODE_ENABLED=true` in `.env`.
+2. Configure `MOTOR_*_CHANNEL` to match the physical airframe wiring:
+   ```
+   MOTOR_A_CHANNEL=0  # front-right → ESC channel 0
+   MOTOR_B_CHANNEL=1  # rear-right  → ESC channel 1
+   MOTOR_C_CHANNEL=2  # rear-left   → ESC channel 2
+   MOTOR_D_CHANNEL=3  # front-left  → ESC channel 3
+   ```
+3. Set inversion flags for any ESC that expects a reversed signal:
+   ```
+   MOTOR_A_INVERTED=false
+   MOTOR_B_INVERTED=false
+   MOTOR_C_INVERTED=false
+   MOTOR_D_INVERTED=false
+   ```
+4. Start the propulsion-controller and inspect the startup verification banner.
+   The banner will show `FC config status: VALID — passthrough execution enabled`
+   when all hard conditions are satisfied.
+
+### New environment variables (execution layer)
+
+| Variable | Default | Description |
+|---|---|---|
+| `FC_OUTPUT_MODE` | `mixer` | `mixer` = FC mixer path; `passthrough` = direct channel routing |
+| `MOTOR_A_CHANNEL` | `0` | Physical ESC channel index for logical motor A (front-right) |
+| `MOTOR_B_CHANNEL` | `1` | Physical ESC channel index for logical motor B (rear-right) |
+| `MOTOR_C_CHANNEL` | `2` | Physical ESC channel index for logical motor C (rear-left) |
+| `MOTOR_D_CHANNEL` | `3` | Physical ESC channel index for logical motor D (front-left) |
+| `MOTOR_A_INVERTED` | `false` | `true` to invert motor A signal (v → 1 − v) |
+| `MOTOR_B_INVERTED` | `false` | `true` to invert motor B signal |
+| `MOTOR_C_INVERTED` | `false` | `true` to invert motor C signal |
+| `MOTOR_D_INVERTED` | `false` | `true` to invert motor D signal |
+
+### Bench-test procedure
+
+Use `generateBenchSequence()` (`bench-test.ts`) to verify motor routing without
+free flight.  The sequence runs motors **one at a time** in this exact order:
+
+| Step | Logical output | Purpose |
+|---|---|---|
+| `A_ONLY` | `[0.15, 0, 0, 0]` | Confirm front-right motor wiring |
+| `B_ONLY` | `[0, 0.15, 0, 0]` | Confirm rear-right motor wiring |
+| `C_ONLY` | `[0, 0, 0.15, 0]` | Confirm rear-left motor wiring |
+| `D_ONLY` | `[0, 0, 0, 0.15]` | Confirm front-left motor wiring |
+| `A_AND_C` | `[0.15, 0, 0.15, 0]` | Confirm front-right/rear-left diagonal pair |
+| `B_AND_D` | `[0, 0.15, 0, 0.15]` | Confirm rear-right/front-left diagonal pair |
+| `PHASE_SWEEP_0–7` | low-amplitude rotating | Confirm differential routing at 45° steps |
+
+Each step logs both the **logical** `[A, B, C, D]` vector and the **resolved
+physical** `[ch0, ch1, ch2, ch3]` array so the operator can directly confirm
+which ESC channel fires for each motor command.
+
+### Startup verification banner
+
+On every start, the propulsion-controller emits a structured log tagged with
+`type: 'startup_verification'` containing:
+
+- field mode enabled / disabled
+- stabilization enabled / disabled
+- translation enabled / disabled
+- output mode (`MIXER` or `PASSTHROUGH`)
+- output scale
+- motor channel map (`A→ch0  B→ch1  C→ch2  D→ch3`)
+- motor inversion flags
+- FC config status: `VALID` or `INVALID — arming blocked`
+- Any hard errors or advisory warnings
+
+### Arming failsafe
+
+When `FC_OUTPUT_MODE=passthrough`, arming is **blocked** if any of the following
+hard conditions are not satisfied:
+
+1. `FIELD_MODE_ENABLED=true` — passthrough without field mode has no per-motor
+   outputs to route.
+2. **Channel map is a valid permutation of `[0, 1, 2, 3]`** — no duplicate
+   channel assignments; each channel must be an integer in `[0, 3]`.
+3. `FIELD_OUTPUT_SCALE > 0` and finite — a degenerate scale prevents all motor
+   output.
+
+When arming is blocked, the log will contain a `passthrough_arm_blocked` entry
+listing exactly which conditions failed.
+
+### Conditions required before tethered lift
+
+Before a tethered lift with `FC_OUTPUT_MODE=passthrough`:
+
+- [ ] Startup banner shows `FC config status: VALID`
+- [ ] Bench test completed with `FC_HARDWARE_MODE=mavlink` — each motor fires
+      on the expected physical channel
+- [ ] FC mixer bypass is manually verified (ArduPilot `SERVO_PASS_THRU` / custom
+      motor matrix, or PX4 actuator direct mode)
+- [ ] No `passthrough_arm_blocked` errors in startup log
+- [ ] `FIELD_MODE_ENABLED=true`
+- [ ] `FIELD_OUTPUT_SCALE` set to a safe bench value (e.g. `0.3`) for first lift
+
+---
+
 ## Tech Stack
 
 - **TypeScript** + **tsx** for all Node.js services

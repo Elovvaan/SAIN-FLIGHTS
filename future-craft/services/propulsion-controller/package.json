@@ -5,7 +5,7 @@
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "node --require tsx/cjs --test src/field-solver.test.ts src/field-stabilizer.test.ts"
+    "test": "node --require tsx/cjs --test src/field-solver.test.ts src/field-stabilizer.test.ts src/actuator-router.test.ts"
   },
   "dependencies": {
     "@future-craft/schemas": "workspace:*",
