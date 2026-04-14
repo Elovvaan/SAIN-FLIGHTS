@@ -23,7 +23,7 @@ intended motors safely and predictably.
 | 4-in-1 ESC or 4× individual ESCs (BLHeli32 or AM32, 30–50 A) | 1 set | Must support standard PWM or DSHOT signal; BLHeli32 preferred for directional verification |
 | Flight controller (Pixhawk 4 / Cube Orange / Matek H743) | 1 | Must expose ≥ 4 independent MAIN/AUX PWM outputs |
 | Power Distribution Board (PDB) with 5 V BEC | 1 | Rated ≥ 4× peak ESC draw + 5 % margin |
-| LiPo battery (4S or 6S, ≥ 4 000 mAh) | 1 | Voltage ≥ motor Kv × 2 π × battery volts safe region |
+| LiPo battery (4S or 6S, ≥ 4 000 mAh) | 1 | Choose cell count so that `battery_voltage × motor_Kv` stays within the motor's rated max RPM (e.g. a 1 000 Kv motor on 4S ≈ 14.8 V → ~14 800 RPM unloaded); do not exceed the motor manufacturer's rated input voltage |
 | Power module (e.g. Holybro PM07 or equivalent) | 1 | Inline between battery and PDB/ESC rail |
 | Inline fuse / circuit breaker | 1 | Rating = 1.2 × total ESC peak draw |
 | Master power disconnect (XT60/XT90 anti-spark) | 1 | |
@@ -200,12 +200,15 @@ BATTERY → [ANTI-SPARK CONNECTOR] → [INLINE FUSE] → POWER MODULE → PDB
 ```
 
 Prop directions follow the standard X-frame rule where opposite motors cancel
-torque:
+torque.  Prop-nut thread direction is chosen so that the motor's own spin
+**tightens** the nut (self-locking):
 
-- **A (0°, front-right)** → CW prop (CCW thread nut)
-- **B (90°, rear-right)** → CCW prop (CW thread nut)
-- **C (180°, rear-left)** → CW prop (CCW thread nut)
-- **D (270°, front-left)** → CCW prop (CW thread nut)
+- **A (0°, front-right)** → CW prop · **CCW-thread (left-hand) nut**
+  *(CW motor rotation tightens a left-hand-thread nut)*
+- **B (90°, rear-right)** → CCW prop · **CW-thread (right-hand) nut**
+  *(CCW motor rotation tightens a right-hand-thread nut)*
+- **C (180°, rear-left)** → CW prop · **CCW-thread (left-hand) nut**
+- **D (270°, front-left)** → CCW prop · **CW-thread (right-hand) nut**
 
 ---
 
@@ -513,8 +516,10 @@ Complete this checklist in order before every tethered or free-lift attempt.
 
 - [ ] **Frame integrity**: all arms are tight, no cracks or deformation
 - [ ] **Motor mounts**: all four motor bolts torqued, loctite applied
-- [ ] **Propeller orientation**: A and C have CW-thread props (CCW-threaded nut);
-      B and D have CCW-thread props (CW-threaded nut) — confirm using prop markings
+- [ ] **Propeller orientation**: A and C (CW motors) have CW-pitch props with
+      **CCW-thread (left-hand) nuts** (motor spin tightens nut);
+      B and D (CCW motors) have CCW-pitch props with **CW-thread (right-hand)
+      nuts** — confirm prop markings and nut thread direction before each flight
 - [ ] **Propeller security**: all prop nuts tight (hand-tight + 1/4 turn); nylon
       lock-nut or prop adapter collar present
 - [ ] **Motor order**: visually walk the arms in order A (front-right) → B (rear-right)

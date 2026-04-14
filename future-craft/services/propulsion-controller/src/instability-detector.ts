@@ -137,11 +137,12 @@ export function detectInstability(
 /**
  * Compute a scalar stability score in [0, 1].
  *
- * 0 = perfectly stable (on the stable-band boundary or within it).
- * 1 = at or beyond the maximum allowed angle.
- *
- * The score is 0 within the stable band, then scales linearly up to 1 at the
- * max angle limit.
+ * The score scales linearly from 0 (no deviation) to 1 at `config.maxAngleRad`.
+ * The stable-band threshold (`stableBandRad`) is intentionally NOT applied as an
+ * offset in this calculation — the score must be proportional to the raw angle
+ * magnitude so that `score(angle) / score(maxAngleRad) == angle / maxAngleRad`.
+ * Detection hysteresis (ignoring small angles) belongs in the calling layer, not
+ * in this scalar metric.
  *
  * @param imuState  Current IMU reading.
  * @param config    Threshold configuration.
