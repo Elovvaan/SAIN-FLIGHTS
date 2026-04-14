@@ -32,6 +32,11 @@ import {
 import type { InstabilityConfig } from './instability-detector';
 import { detectLift } from './lift-detector';
 import { emitTelemetry } from './telemetry-stream';
+import {
+  enforceArmingGate,
+  emitHardwareValidationTelemetry,
+} from './hardware-validator';
+import type { HardwareValidationReport } from './hardware-validator';
 
 const logger = pino({ name: 'propulsion-controller', level: config.LOG_LEVEL });
 const flightCtrl = createFlightControllerLink(
@@ -92,6 +97,34 @@ const translatorConfig: TranslatorConfig = {
 
 /** Target hover altitude in metres; set when a motion plan carries one. */
 let targetAltM: number | undefined;
+
+// ── Hardware validation state ─────────────────────────────────────────────────
+
+/**
+ * Stored hardware validation report.
+ *
+ * Null = validation has not been run yet (treated as NO_GO — any uncertainty
+ * blocks arming in mavlink+field mode).
+ *
+ * Populated by calling setHardwareValidationResult() before arming.
+ */
+let hardwareValidationResult: HardwareValidationReport | null = null;
+
+/**
+ * Store the result of a completed hardware validation run.
+ *
+ * This must be called with a GO report before the system will allow arming
+ * in FC_HARDWARE_MODE=mavlink with FIELD_MODE_ENABLED=true.
+ */
+export function setHardwareValidationResult(report: HardwareValidationReport): void {
+  hardwareValidationResult = report;
+  emitHardwareValidationTelemetry(
+    'validation_result_stored',
+    report.overall === 'GO' ? 'PASS' : 'FAIL',
+    { overall: report.overall, failureReasons: report.failureReasons },
+    logger,
+  );
+}
 
 // ── Hardware validation layer — safe-lift / tether / state machine ────────────
 
@@ -507,6 +540,41 @@ async function main(): Promise<void> {
 
   subscribe<StateChangedEvent>(TOPICS.STATE_CHANGED, async (event) => {
     if (event.to === 'ARMED_READY') {
+      // ── Hardware validation arming gate ────────────────────────────────────
+      // In FC_HARDWARE_MODE=mavlink with FIELD_MODE_ENABLED, full hardware
+      // truth validation must have been completed and passed before arming.
+      // Any uncertainty = NO_GO.
+      //
+      // In sim mode a warning is emitted but arming is not blocked (physical
+      // motors do not exist in simulation).
+      if (config.FC_HARDWARE_MODE === 'mavlink' && config.FIELD_MODE_ENABLED) {
+        if (hardwareValidationResult === null) {
+          logger.error(
+            {
+              type: 'hardware_validation_gate',
+              result: 'NO_GO',
+              reason: 'Hardware validation has not been run.',
+            },
+            [
+              '⛔ ARMING BLOCKED — HARDWARE VALIDATION: NO_GO',
+              '  Hardware validation has not been run.',
+              '  Run the pre-flight validation sequence and call setHardwareValidationResult()',
+              '  with a GO report before attempting to arm.',
+            ].join('\n'),
+          );
+          return; // do not arm
+        }
+        const allowed = enforceArmingGate(hardwareValidationResult, logger);
+        if (!allowed) return; // do not arm
+      } else if (config.FC_HARDWARE_MODE === 'sim' && config.FIELD_MODE_ENABLED) {
+        emitHardwareValidationTelemetry(
+          'arming_gate',
+          'WARN',
+          { reason: 'FC_HARDWARE_MODE=sim — hardware validation skipped in simulation mode.' },
+          logger,
+        );
+      }
+
       // ── Mixer-mode hardware arming guard ────────────────────────────────────
       // FC_OUTPUT_MODE=mixer on real hardware with field mode active is NOT a
       // valid configuration for true per-motor field execution: the FC mixer
